@@ -5,6 +5,17 @@ const ENEMY_HEIGHT = 30;
 const BULLET_WIDTH = 3;
 const BULLET_HEIGHT = 15;
 
+// Add bonus ship constants
+const BONUS_SHIP_WIDTH = 60;
+const BONUS_SHIP_HEIGHT = 20;
+
+// Add new bonus types enum to existing code
+const BonusType = {
+    RAPID_FIRE: 'rapidFire',
+    MULTI_SHOT: 'multiShot',
+    BULLET_SHIELD: 'bulletShield'
+};
+
 const GAME_CONFIG = {
     width: 800,
     height: 600,
@@ -26,7 +37,9 @@ const GAME_CONFIG = {
             enemySpeed: 1.5,
             enemyType: 'boss'
         }
-    ]
+    ],
+    bonusShipChance: 0.001,  // Chance per frame of bonus ship appearing
+    bonusDuration: 10000     // Duration of bonus effect in ms
 };
 
 // Fix circular reference by using a global audio context
@@ -117,6 +130,78 @@ class SoundManager {
         oscillator.start();
         oscillator.stop(this.audioContext.currentTime + 0.3);
     }
+
+    playBulletCollision() {
+        if (this.isMuted) return;
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.type = 'triangle';
+        oscillator.frequency.setValueAtTime(440, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(220, this.audioContext.currentTime + 0.05);
+        
+        gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.05);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.start();
+        oscillator.stop(this.audioContext.currentTime + 0.05);
+    }
+
+    playBonusShip() {
+        if (this.isMuted) return;
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(660, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(440, this.audioContext.currentTime + 0.3);
+        
+        gainNode.gain.setValueAtTime(0.2, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.start();
+        oscillator.stop(this.audioContext.currentTime + 0.3);
+    }
+
+    playPowerupCollect() {
+        if (this.isMuted) return;
+        
+        // Play ascending notes for powerup
+        this._playOscillator('sine', 440, 880, 0.2, 0.1);
+        
+        setTimeout(() => {
+            this._playOscillator('sine', 660, 990, 0.2, 0.1);
+        }, 100);
+        
+        setTimeout(() => {
+            this._playOscillator('sine', 880, 1320, 0.2, 0.1);
+        }, 200);
+    }
+    
+    _playOscillator(type, freqStart, freqEnd, gain, duration) {
+        if (this.isMuted) return;
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.type = type;
+        oscillator.frequency.setValueAtTime(freqStart, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(freqEnd, this.audioContext.currentTime + duration);
+        
+        gainNode.gain.setValueAtTime(gain, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.start();
+        oscillator.stop(this.audioContext.currentTime + duration);
+    }
 }
 
 // Add game state constants for better state management
@@ -128,17 +213,58 @@ const GameState = {
     LEVEL_COMPLETE: 'levelComplete'
 };
 
-// Add Explosion class to handle explosion animations
+// Add object pooling for explosions to improve performance
+class ObjectPool {
+    constructor(objectType, initialSize = 20) {
+        this.objectType = objectType;
+        this.pool = [];
+        this.grow(initialSize);
+    }
+    
+    grow(size) {
+        for (let i = 0; i < size; i++) {
+            this.pool.push(new this.objectType());
+        }
+    }
+    
+    get(params = {}) {
+        if (this.pool.length === 0) {
+            this.grow(5);
+        }
+        
+        const object = this.pool.pop();
+        object.reset(params);
+        return object;
+    }
+    
+    release(object) {
+        this.pool.push(object);
+    }
+}
+
+// Improved explosion class with object pooling support
 class Explosion {
-    constructor(x, y, color = '#ff0', size = 30) {
+    constructor() {
+        this.x = 0;
+        this.y = 0;
+        this.size = 30;
+        this.color = '#ff0';
+        this.lifetime = 30;
+        this.age = 0;
+        this.particles = [];
+        this.active = false;
+    }
+    
+    reset({x, y, color = '#ff0', size = 30}) {
         this.x = x;
         this.y = y;
         this.size = size;
         this.color = color;
-        this.particles = [];
-        this.lifetime = 30; // frames
         this.age = 0;
+        this.active = true;
+        this.particles = [];
         this.createParticles();
+        return this;
     }
     
     createParticles() {
@@ -166,8 +292,11 @@ class Explosion {
             particle.alpha = 1 - (this.age / this.lifetime);
         }
         
-        // Return false when explosion is complete
-        return this.age < this.lifetime;
+        if (this.age >= this.lifetime) {
+            this.active = false;
+        }
+        
+        return this.active;
     }
     
     draw(ctx) {
@@ -217,7 +346,8 @@ class Game {
         this.offscreenCtx = this.offscreenCanvas.getContext('2d');
         
         // Create object pools for bullets to reduce garbage collection
-        this.bulletPool = [];
+        this.bulletPool = new ObjectPool(Bullet, 30);
+        this.explosionPool = new ObjectPool(Explosion, 10);
         
         this.lastAlienSound = 0;
         this.alienSoundInterval = 800; // ms between alien movement sounds
@@ -227,6 +357,22 @@ class Game {
         this.playerInvulnerable = false;
         this.playerInvulnerableTime = 0;
         this.playerInvulnerableDuration = 1500; // 1.5 seconds of invulnerability
+
+        // Audio context initialization flag
+        this.audioInitialized = false;
+        
+        // Add touch area for mobile controls
+        this.touchZones = {
+            left: { x: 0, width: GAME_CONFIG.width / 3 },
+            middle: { x: GAME_CONFIG.width / 3, width: GAME_CONFIG.width / 3 },
+            right: { x: GAME_CONFIG.width * 2 / 3, width: GAME_CONFIG.width / 3 }
+        };
+        
+        // Speed up movement and animations based on frame rate
+        this.deltaMultiplier = 1;
+
+        this.bonusShip = null;
+        this.bonusShipTimer = 0;
 
         this.init();
     }
@@ -311,11 +457,22 @@ class Game {
 
     handleTouch(e) {
         e.preventDefault();
+        this.initAudio(); // Initialize audio on first touch
+        
         const rect = this.canvas.getBoundingClientRect();
         const touch = e.touches[0];
-        const x = (touch.clientX - rect.left) * (this.canvas.width / rect.width);
-        this.state.touches.set(touch.identifier, { x, y: touch.clientY });
-        this.player.move(x > this.player.x ? 1 : -1);
+        const touchX = (touch.clientX - rect.left) * (GAME_CONFIG.width / rect.width);
+        
+        // Map touch to screen zones
+        if (touchX < this.touchZones.left.x + this.touchZones.left.width) {
+            this.player.move(-1);
+        } else if (touchX > this.touchZones.right.x) {
+            this.player.move(1);
+        } else {
+            this.player.shoot();
+        }
+        
+        this.state.touches.set(touch.identifier, { x: touchX, y: touch.clientY });
     }
 
     handleTouchEnd(e) {
@@ -324,8 +481,19 @@ class Game {
         this.player.shoot();
     }
 
+    // Ensure audio context is initialized with user interaction
+    initAudio() {
+        if (!this.audioInitialized && this.soundManager.audioContext.state === 'suspended') {
+            this.soundManager.audioContext.resume();
+            this.audioInitialized = true;
+        }
+    }
+
     update(deltaTime) {
         if (this.state.gameState !== GameState.PLAYING) return;
+        
+        // Calculate frame rate compensation multiplier
+        this.deltaMultiplier = deltaTime / (1000/60); // Target 60 FPS
         
         // Update player invulnerability
         if (this.playerInvulnerable) {
@@ -335,8 +503,14 @@ class Game {
             }
         }
         
-        // Update explosions
-        this.explosions = this.explosions.filter(explosion => explosion.update());
+        // Update explosions with proper memory management
+        this.explosions = this.explosions.filter(explosion => {
+            const active = explosion.update();
+            if (!active) {
+                this.explosionPool.release(explosion);
+            }
+            return active;
+        });
 
         // Update player first
         this.player.update(deltaTime);
@@ -353,6 +527,9 @@ class Game {
         
         this.checkCollisions();
         this.updateFPS(deltaTime);
+
+        // Update and potentially spawn bonus ship
+        this.updateBonusShip(deltaTime);
     }
     
     updateEnemyMovement(deltaTime) {
@@ -400,6 +577,14 @@ class Game {
         const playerBullets = this.player.bullets;
         const enemies = [...this.entities].filter(e => e instanceof Enemy);
         
+        // Early return if no enemies or bullets
+        if (enemies.length === 0 || playerBullets.length === 0) {
+            if (enemies.length === 0) {
+                this.handleGameEvent('levelComplete');
+            }
+            return;
+        }
+        
         // Player bullets hitting enemies
         for (let i = playerBullets.length - 1; i >= 0; i--) {
             const bullet = playerBullets[i];
@@ -408,7 +593,14 @@ class Game {
                 const enemy = enemies[j];
                 
                 if (this.checkCollision(bullet, enemy)) {
-                    this.handleCollision(bullet, enemy);
+                    this.handleGameEvent('enemyDestroyed', {
+                        enemy: enemy,
+                        x: enemy.x + enemy.width/2,
+                        y: enemy.y + enemy.height/2
+                    });
+                    
+                    // Return bullet to pool instead of just removing it
+                    this.bulletPool.release(playerBullets[i]);
                     playerBullets.splice(i, 1);
                     break;
                 }
@@ -422,157 +614,47 @@ class Game {
                     const bullet = enemy.bullets[i];
                     
                     if (this.checkCollision(bullet, this.player)) {
-                        // Create explosion at player hit position
-                        this.explosions.push(
-                            new Explosion(bullet.x, bullet.y, '#0f8', 20)
-                        );
-                        
+                        // Return bullet to pool
                         enemy.bullets.splice(i, 1);
-                        this.state.lives--;
-                        this.updateLives();
-                        this.soundManager.playPlayerHit();
+                        this.bulletPool.release(bullet);
                         
-                        // Make player invulnerable briefly
-                        this.playerInvulnerable = true;
-                        this.playerInvulnerableTime = 0;
-                        
-                        if (this.state.lives <= 0) {
-                            // Big explosion for game over
-                            this.explosions.push(
-                                new Explosion(this.player.x + this.player.width/2, 
-                                             this.player.y + this.player.height/2, 
-                                             '#0f0', 60)
-                            );
-                            this.gameOver("You ran out of lives!");
-                        }
+                        this.handleGameEvent('playerHit', {
+                            x: bullet.x, 
+                            y: bullet.y
+                        });
                         break;
                     }
                 }
             }
         }
-        
-        if (enemies.length === 0) {
-            this.nextLevel();
-        }
-    }
-    
-    // Add the missing checkCollision method
-    checkCollision(a, b) {
-        return !(a.x + a.width < b.x || 
-                a.x > b.x + b.width || 
-                a.y + a.height < b.y || 
-                a.y > b.y + b.height);
-    }
 
-    handleCollision(bullet, enemy) {
-        // Create explosion at enemy position
-        this.explosions.push(
-            new Explosion(enemy.x + enemy.width/2, enemy.y + enemy.height/2, '#f88')
-        );
-        
-        this.entities.delete(enemy);
-        this.state.score += 10;
-        this.soundManager.playExplosion();
-        this.updateScore();
-    }
-    
-    gameOver(reason = "Game Over") {
-        this.state.gameState = GameState.GAME_OVER;
-        
-        // Show game over screen with reason
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-        this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
-        
-        this.ctx.fillStyle = '#f00';
-        this.ctx.font = '40px Arial';
-        this.ctx.textAlign = 'center';
-        this.ctx.fillText('GAME OVER', GAME_CONFIG.width/2, GAME_CONFIG.height/3);
-        
-        this.ctx.fillStyle = '#fff';
-        this.ctx.font = '20px Arial';
-        this.ctx.fillText(`${reason}`, GAME_CONFIG.width/2, GAME_CONFIG.height*0.45);
-        this.ctx.fillText(`Final Score: ${this.state.score}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2);
-        this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
-        
-        if (this.debug) {
-            console.log('Game ended: ' + reason);
-        }
-        
-        // Stop the game loop
-        this.stop();
-        
-        // Setup event listener for restart
-        const restartHandler = (e) => {
-            if (e.key === 'Enter') {
-                window.removeEventListener('keydown', restartHandler);
-                this.startGame();
+        // Check for player bullets hitting bonus ship
+        if (this.bonusShip && playerBullets.length > 0) {
+            for (let i = playerBullets.length - 1; i >= 0; i--) {
+                const bullet = playerBullets[i];
+                if (this.checkCollision(bullet, this.bonusShip)) {
+                    this.bonusShip.hit();
+                    playerBullets.splice(i, 1);
+                    break;
+                }
             }
-        };
-        
-        window.addEventListener('keydown', restartHandler);
-    }
-    
-    updateLives() {
-        document.getElementById('lives').textContent = `Lives: ${this.state.lives}`;
-    }
-
-    render() {
-        // Clear the canvas
-        this.ctx.fillStyle = '#000';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        
-        // Draw background
-        this.drawBackground();
-        
-        if (this.state.gameState === GameState.MENU) {
-            this.renderMenu();
-            return;
         }
         
-        if (this.state.gameState === GameState.PAUSED) {
-            this.renderPauseScreen();
-            return;
-        }
-        
-        // Draw player with blinking effect when invulnerable
-        if (!this.playerInvulnerable || Math.floor(Date.now() / 100) % 2) {
-            this.player.draw(this.ctx);
-        }
-        
-        // Draw entities (enemies and their bullets)
-        this.entities.forEach(entity => {
-            if (entity instanceof Enemy) {
-                entity.draw(this.ctx);
-                // Draw enemy bullets
-                entity.bullets.forEach(bullet => bullet.draw(this.ctx));
-            }
-        });
-
-        // Draw explosions over everything else
-        this.explosions.forEach(explosion => explosion.draw(this.ctx));
-    }
-    
-    // Fix random background stars so they don't flicker
-    drawBackground() {
-        // Simply copy the pre-rendered background
-        this.ctx.drawImage(this.offscreenCanvas, 0, 0);
-    }
-    
-    prepareBackgroundStars() {
-        // Generate and render stars once to offscreen canvas
-        this.offscreenCtx.fillStyle = '#000';
-        this.offscreenCtx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
-        
-        this.offscreenCtx.fillStyle = '#FFF';
-        for (let i = 0; i < 100; i++) {
-            const x = Math.random() * GAME_CONFIG.width;
-            const y = Math.random() * GAME_CONFIG.height;
-            const size = Math.random() * 2;
-            this.offscreenCtx.fillRect(x, y, size, size);
-        }
-    }
-
-    renderMenu() {
+        // Check for bullets hitting enemy bullets (new feature!)
+        for (let i = playerBullets.length - 1; i >= 0; i--) {
+            const playerBullet = playerBullets[i];
+            let bulletHit = false;
+            
+            // Check against all enemy bullets
+            for (const enemy of enemies) {
+                for (let j = enemy.bullets.length - 1; j >= 0; j--) {
+                    const enemyBullet = enemy.bullets[j];
+                    
+                    // Check if player bullet hits enemy bullet
+                    if (this.checkBulletCollision(playerBullet, enemyBullet)) {
+                        // Create small explosion where bullets collided
+                        this.explosions.push(
+                            this.explosionPool.get({
         this.ctx.fillStyle = '#fff';
         this.ctx.font = '40px Arial';
         this.ctx.textAlign = 'center';
@@ -681,8 +763,34 @@ class Game {
     }
 
     victory() {
-        alert(`Congratulations! You completed all ${this.state.maxLevel} levels!`);
+        this.state.gameState = GameState.GAME_OVER;
+        
+        // Show victory screen
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+        
+        this.ctx.fillStyle = '#0f0';
+        this.ctx.font = '40px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('VICTORY!', GAME_CONFIG.width/2, GAME_CONFIG.height/3);
+        
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '20px Arial';
+        this.ctx.fillText(`You completed all ${this.state.maxLevel} levels!`, GAME_CONFIG.width/2, GAME_CONFIG.height*0.45);
+        this.ctx.fillText(`Final Score: ${this.state.score}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2);
+        this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+        
         this.stop();
+        
+        // Setup event listener for restart
+        const restartHandler = (e) => {
+            if (e.key === 'Enter') {
+                window.removeEventListener('keydown', restartHandler);
+                this.startGame();
+            }
+        };
+        
+        window.addEventListener('keydown', restartHandler);
     }
 
     initEnemies() {
@@ -726,6 +834,65 @@ class Game {
     recycleBullet(bullet) {
         // Reset bullet state
         this.bulletPool.push(bullet);
+    }
+
+    // Optimize handling of game events
+    handleGameEvent(eventType, data = {}) {
+        switch(eventType) {
+            case 'playerHit':
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x: data.x,
+                        y: data.y,
+                        color: '#0f8',
+                        size: 20
+                    })
+                );
+                this.state.lives--;
+                this.updateLives();
+                this.soundManager.playPlayerHit();
+                
+                // Make player invulnerable briefly
+                this.playerInvulnerable = true;
+                this.playerInvulnerableTime = 0;
+                
+                if (this.state.lives <= 0) {
+                    this.handleGameEvent('gameOver', {reason: "You ran out of lives!"});
+                }
+                break;
+                
+            case 'enemyDestroyed':
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x: data.x, 
+                        y: data.y,
+                        color: '#f88',
+                        size: 30
+                    })
+                );
+                this.entities.delete(data.enemy);
+                this.state.score += 10;
+                this.soundManager.playExplosion();
+                this.updateScore();
+                break;
+                
+            case 'gameOver':
+                // Final explosion
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x: this.player.x + this.player.width/2,
+                        y: this.player.y + this.player.height/2,
+                        color: '#0f0',
+                        size: 60
+                    })
+                );
+                this.gameOver(data.reason);
+                break;
+                
+            case 'levelComplete':
+                this.nextLevel();
+                break;
+        }
     }
 }
 
@@ -891,10 +1058,14 @@ class Enemy {
         
         // Random check based on level difficulty
         if (now - this.lastShot >= this.shootDelay && Math.random() < levelFactor) {
-            // Create a bullet from the enemy position
-            const bullet = new Bullet(this.x + this.width / 2, this.y + this.height);
-            bullet.speed = -Math.abs(bullet.speed); // Ensure bullet moves downward
-            bullet.enemyBullet = true; // Mark as enemy bullet
+            // Get bullet from pool instead of creating new one
+            const bullet = window.gameInstance.bulletPool.get({
+                x: this.x + this.width / 2,
+                y: this.y + this.height,
+                speed: -7,
+                enemyBullet: true
+            });
+            
             this.bullets.push(bullet);
             this.lastShot = now;
             this.shootDelay = 2000 + Math.random() * (8000 - window.gameInstance.state.level * 500); // More delay in early levels
@@ -902,11 +1073,17 @@ class Enemy {
     }
 
     update(deltaTime) {
-        // Update existing bullets
+        // Apply frame rate compensation
+        const speedMultiplier = window.gameInstance.deltaMultiplier;
+        
+        // Update existing bullets with proper object pooling
         this.bullets = this.bullets.filter(bullet => {
             bullet.update(deltaTime);
-            // Remove bullets that go off screen
-            return bullet.y > 0 && bullet.y < GAME_CONFIG.height;
+            if (bullet.y <= 0 || bullet.y >= GAME_CONFIG.height) {
+                window.gameInstance.bulletPool.release(bullet);
+                return false;
+            }
+            return true;
         });
         
         // Try to shoot
@@ -915,15 +1092,20 @@ class Enemy {
 }
 
 class Bullet {
-    constructor(x, y) {
+    constructor() {
+        this.reset();
+    }
+    
+    reset({x = 0, y = 0, speed = 7, enemyBullet = false} = {}) {
         this.x = x;
         this.y = y;
         this.width = BULLET_WIDTH;
         this.height = BULLET_HEIGHT;
-        this.speed = 7;
-        this.enemyBullet = false; // Flag to identify enemy bullets
+        this.speed = speed;
+        this.enemyBullet = enemyBullet;
+        return this;
     }
-
+    
     draw(ctx) {
         if (this.enemyBullet) {
             // Enemy bullets are red
@@ -946,16 +1128,31 @@ class Bullet {
             ctx.fill();
         }
     }
-
+    
     update(deltaTime) {
-        this.y -= this.speed * (deltaTime / 16); // Make speed frame-rate independent
+        // Frame rate independent movement
+        const speedMultiplier = window.gameInstance.deltaMultiplier;
+        this.y -= this.speed * speedMultiplier;
     }
 }
 
-// Initialize game on load and prevent creating multiple instances
+// Clean up event handling for DOM content loaded
 window.addEventListener('DOMContentLoaded', () => {
-    if (!window.gameInstance) {
-        const game = new Game();
-        game.start();
-    }
+    if (window.gameInstance) return;
+    
+    const game = new Game();
+    
+    // Try to unlock audio on first user interaction
+    const unlockAudio = () => {
+        game.initAudio();
+        ['click', 'touchstart', 'keydown'].forEach(event => {
+            document.removeEventListener(event, unlockAudio);
+        });
+    };
+    
+    ['click', 'touchstart', 'keydown'].forEach(event => {
+        document.addEventListener(event, unlockAudio, { once: true });
+    });
+    
+    game.start();
 });
