@@ -926,6 +926,13 @@ class Game {
         }, 2000);
     }
 
+    /**
+     * Updates the lives display in the DOM
+     */
+    updateLives() {
+        document.getElementById('lives').textContent = `Lives: ${this.state.lives}`;
+    }
+
     render() {
         // Clear the canvas
         this.ctx.fillStyle = '#000';
