@@ -677,8 +677,8 @@ class Enemy {
         this.lastShot = 0;
         this.type = type;
         this.direction = 1; // Add direction property
-        this.shootDelay = 1000 + Math.random() * 4000; // Randomize shooting delay
-        this.lastShot = Date.now() + Math.random() * 2000; // Offset initial shooting
+        this.shootDelay = 2000 + Math.random() * 6000; // Increase delay between shots
+        this.lastShot = Date.now() + Math.random() * 3000; // Greater offset for initial shooting
     }
 
     draw(ctx) {
@@ -750,16 +750,34 @@ class Enemy {
     }
 
     shoot() {
+        // Only allow a certain number of bullets on screen per level
+        const maxEnemyBullets = Math.min(3 + window.gameInstance.state.level, 20);
+        let totalEnemyBullets = 0;
+        
+        // Count existing enemy bullets
+        const enemies = [...window.gameInstance.entities].filter(e => e instanceof Enemy);
+        for (const enemy of enemies) {
+            totalEnemyBullets += enemy.bullets.length;
+        }
+        
+        // Don't shoot if there are already too many bullets
+        if (totalEnemyBullets >= maxEnemyBullets) {
+            return;
+        }
+        
         const now = Date.now();
-        // Use time-based shooting with randomization to make it more predictable but varied
-        if (now - this.lastShot >= this.shootDelay) {
+        // Adjust difficulty based on level - much easier in first level
+        const levelFactor = window.gameInstance.state.level === 1 ? 0.0002 : 0.0005 * window.gameInstance.state.level;
+        
+        // Random check based on level difficulty
+        if (now - this.lastShot >= this.shootDelay && Math.random() < levelFactor) {
             // Create a bullet from the enemy position
             const bullet = new Bullet(this.x + this.width / 2, this.y + this.height);
             bullet.speed = -Math.abs(bullet.speed); // Ensure bullet moves downward
             bullet.enemyBullet = true; // Mark as enemy bullet
             this.bullets.push(bullet);
             this.lastShot = now;
-            this.shootDelay = 1000 + Math.random() * 4000; // Randomize next shot timing
+            this.shootDelay = 2000 + Math.random() * (8000 - window.gameInstance.state.level * 500); // More delay in early levels
         }
     }
 
