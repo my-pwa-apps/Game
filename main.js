@@ -679,9 +679,9 @@ class Game {
 
     checkCollision(obj1, obj2) {
         return obj1.x < obj2.x + obj2.width &&
-               obj1.x + obj1.width > obj2.x &&
+               obj1.x + obj2.width > obj2.x &&
                obj1.y < obj2.y + obj2.height &&
-               obj1.y + obj1.height > obj2.y;
+               obj1.y + obj2.height > obj2.y;
     }
 
     checkBulletCollision(bullet1, bullet2) {
@@ -1021,6 +1021,56 @@ class Game {
         
         this.ctx.font = '20px Arial';
         this.ctx.fillText('Press P to resume', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+    }
+
+    /**
+     * Prepare the background stars texture on the offscreen canvas.
+     * This method initializes the starfield to avoid regenerating it on every frame.
+     */
+    prepareBackgroundStars() {
+        // Clear the offscreen canvas
+        this.offscreenCtx.fillStyle = '#000';
+        this.offscreenCtx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+        
+        // Generate a fixed starfield pattern
+        this.stars = [];
+        for (let i = 0; i < 100; i++) {
+            const star = {
+                x: Math.random() * GAME_CONFIG.width,
+                y: Math.random() * GAME_CONFIG.height,
+                size: 0.5 + Math.random() * 1.5, // Different star sizes
+                brightness: 0.5 + Math.random() * 0.5 // Different brightness
+            };
+            this.stars.push(star);
+            
+            // Draw each star on the offscreen canvas
+            this.offscreenCtx.fillStyle = `rgba(255,255,255,${star.brightness})`;
+            this.offscreenCtx.beginPath();
+            this.offscreenCtx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+            this.offscreenCtx.fill();
+        }
+        
+        // Add some larger brighter stars
+        for (let i = 0; i < 10; i++) {
+            const x = Math.random() * GAME_CONFIG.width;
+            const y = Math.random() * GAME_CONFIG.height;
+            const size = 1.5 + Math.random() * 1;
+            
+            // Create a gradient for the star
+            const gradient = this.offscreenCtx.createRadialGradient(x, y, 0, x, y, size * 2);
+            gradient.addColorStop(0, 'rgba(255,255,255,0.8)');
+            gradient.addColorStop(1, 'rgba(255,255,255,0)');
+            
+            this.offscreenCtx.fillStyle = gradient;
+            this.offscreenCtx.beginPath();
+            this.offscreenCtx.arc(x, y, size * 2, 0, Math.PI * 2);
+            this.offscreenCtx.fill();
+        }
+    }
+
+    drawBackground() {
+        // Simply copy the pre-rendered background
+        this.ctx.drawImage(this.offscreenCanvas, 0, 0);
     }
 }
 
