@@ -1,29 +1,142 @@
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+const GAME_CONFIG = {
+    width: 800,
+    height: 600,
+    fps: 60,
+    scale: window.devicePixelRatio || 1
+};
 
-canvas.width = 800;
-canvas.height = 600;
+class Game {
+    constructor() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d', { alpha: false });
+        this.frameCount = 0;
+        this.lastTime = 0;
+        this.accumulator = 0;
+        this.timeStep = 1000 / GAME_CONFIG.fps;
+        
+        this.state = {
+            score: 0,
+            lives: 3,
+            isRunning: false,
+            touches: new Map()
+        };
+        
+        this.init();
+    }
 
-const PLAYER_WIDTH = 50;
-const PLAYER_HEIGHT = 30;
-const ENEMY_ROWS = 5;
-const ENEMY_COLS = 8;
-const ENEMY_WIDTH = 40;
-const ENEMY_HEIGHT = 30;
-const BULLET_WIDTH = 3;
-const BULLET_HEIGHT = 15;
+    init() {
+        this.setupCanvas();
+        this.bindEvents();
+        this.player = new Player();
+        this.entities = new Set();
+        this.initEnemies();
+    }
 
-let score = 0;
-let lives = 3;
-let touchX = null;
+    setupCanvas() {
+        const { width, height, scale } = GAME_CONFIG;
+        this.canvas.width = width * scale;
+        this.canvas.height = height * scale;
+        this.canvas.style.width = `${width}px`;
+        this.canvas.style.height = `${height}px`;
+        this.ctx.scale(scale, scale);
+    }
 
-// Update canvas size based on window
-function resizeCanvas() {
-    const container = document.getElementById('game-container');
-    const scale = Math.min(window.innerWidth / 800, window.innerHeight / 600);
-    canvas.width = 800 * scale;
-    canvas.height = 600 * scale;
-    ctx.scale(scale, scale);
+    bindEvents() {
+        const handlers = {
+            'keydown': e => this.handleKeyboard(e),
+            'touchstart': e => this.handleTouch(e),
+            'touchmove': e => this.handleTouch(e),
+            'touchend': e => this.handleTouchEnd(e),
+            'resize': () => this.setupCanvas()
+        };
+
+        Object.entries(handlers).forEach(([event, handler]) => {
+            window.addEventListener(event, handler.bind(this), { passive: false });
+        });
+    }
+
+    handleTouch(e) {
+        e.preventDefault();
+        const rect = this.canvas.getBoundingClientRect();
+        const touch = e.touches[0];
+        const x = (touch.clientX - rect.left) * (this.canvas.width / rect.width);
+        this.state.touches.set(touch.identifier, { x, y: touch.clientY });
+        this.player.move(x > this.player.x ? 1 : -1);
+    }
+
+    update(deltaTime) {
+        this.entities.forEach(entity => entity.update(deltaTime));
+        this.checkCollisions();
+        this.updateFPS(deltaTime);
+    }
+
+    checkCollisions() {
+        const bullets = [...this.entities].filter(e => e instanceof Bullet);
+        const enemies = [...this.entities].filter(e => e instanceof Enemy);
+        
+        for (const bullet of bullets) {
+            for (const enemy of enemies) {
+                if (this.checkCollision(bullet, enemy)) {
+                    this.handleCollision(bullet, enemy);
+                    break;
+                }
+            }
+        }
+    }
+
+    checkCollision(a, b) {
+        return !(a.x + a.width < b.x || 
+                a.x > b.x + b.width || 
+                a.y + a.height < b.y || 
+                a.y > b.y + b.height);
+    }
+
+    handleCollision(bullet, enemy) {
+        this.entities.delete(bullet);
+        this.entities.delete(enemy);
+        this.state.score += 10;
+        this.updateScore();
+    }
+
+    render() {
+        this.ctx.fillStyle = '#000';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        this.entities.forEach(entity => entity.draw(this.ctx));
+    }
+
+    gameLoop(timestamp) {
+        if (!this.state.isRunning) return;
+
+        const deltaTime = timestamp - this.lastTime;
+        this.lastTime = timestamp;
+
+        this.accumulator += deltaTime;
+        
+        while (this.accumulator >= this.timeStep) {
+            this.update(this.timeStep);
+            this.accumulator -= this.timeStep;
+        }
+
+        this.render();
+        requestAnimationFrame(this.gameLoop.bind(this));
+    }
+
+    updateFPS(deltaTime) {
+        if (++this.frameCount % 30 === 0) {
+            const fps = Math.round(1000 / deltaTime);
+            document.getElementById('fps').textContent = `FPS: ${fps}`;
+        }
+    }
+
+    start() {
+        this.state.isRunning = true;
+        this.lastTime = performance.now();
+        requestAnimationFrame(this.gameLoop.bind(this));
+    }
+
+    stop() {
+        this.state.isRunning = false;
+    }
 }
 
 class Player {
@@ -38,7 +151,7 @@ class Player {
         this.shootDelay = 250; // Minimum time between shots
     }
 
-    draw() {
+    draw(ctx) {
         ctx.fillStyle = '#0f0';
         // Draw player ship as triangle
         ctx.beginPath();
@@ -47,7 +160,7 @@ class Player {
         ctx.lineTo(this.x + this.width, this.y + this.height);
         ctx.closePath();
         ctx.fill();
-        this.bullets.forEach(bullet => bullet.draw());
+        this.bullets.forEach(bullet => bullet.draw(ctx));
     }
 
     move(direction) {
@@ -63,9 +176,9 @@ class Player {
         }
     }
 
-    update() {
+    update(deltaTime) {
         this.bullets = this.bullets.filter(bullet => {
-            bullet.update();
+            bullet.update(deltaTime);
             return bullet.y > 0;
         });
     }
@@ -82,7 +195,7 @@ class Enemy {
         this.lastShot = 0;
     }
 
-    draw() {
+    draw(ctx) {
         ctx.fillStyle = '#f00';
         // Draw enemy as invader-like shape
         ctx.beginPath();
@@ -116,138 +229,15 @@ class Bullet {
         this.speed = 7;
     }
 
-    draw() {
+    draw(ctx) {
         ctx.fillStyle = '#fff';
         ctx.fillRect(this.x - this.width / 2, this.y, this.width, this.height);
     }
 
-    update() {
+    update(deltaTime) {
         this.y -= this.speed;
     }
 }
 
-const player = new Player();
-let enemies = [];
-let gameLoop;
-let moveDirection = 1;
-
-function initEnemies() {
-    for (let i = 0; i < ENEMY_ROWS; i++) {
-        for (let j = 0; j < ENEMY_COLS; j++) {
-            enemies.push(new Enemy(j * (ENEMY_WIDTH + 20) + 50, i * (ENEMY_HEIGHT + 20) + 50));
-        }
-    }
-}
-
-function checkCollisions() {
-    player.bullets.forEach((bullet, bulletIndex) => {
-        enemies.forEach((enemy, enemyIndex) => {
-            if (bullet.x < enemy.x + enemy.width &&
-                bullet.x + bullet.width > enemy.x &&
-                bullet.y < enemy.y + enemy.height &&
-                bullet.y + bullet.height > enemy.y) {
-                player.bullets.splice(bulletIndex, 1);
-                enemies.splice(enemyIndex, 1);
-                score += 10;
-            }
-        });
-    });
-
-    enemies.forEach(enemy => {
-        enemy.bullets.forEach((bullet, bulletIndex) => {
-            if (bullet.x < player.x + player.width &&
-                bullet.x + bullet.width > player.x &&
-                bullet.y < player.y + player.height &&
-                bullet.y > player.y) {
-                enemy.bullets.splice(bulletIndex, 1);
-                lives--;
-                if (lives <= 0) {
-                    alert('Game Over! Final Score: ' + score);
-                    cancelAnimationFrame(gameLoop);
-                }
-            }
-        });
-    });
-}
-
-function update() {
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    player.update();
-    player.draw();
-
-    let shouldChangeDirection = false;
-    enemies.forEach(enemy => {
-        enemy.move(moveDirection);
-        if (enemy.x <= 0 || enemy.x + enemy.width >= canvas.width) {
-            shouldChangeDirection = true;
-        }
-        enemy.draw();
-    });
-
-    if (shouldChangeDirection) {
-        moveDirection *= -1;
-        enemies.forEach(enemy => enemy.y += 20);
-    }
-
-    checkCollisions();
-
-    if (enemies.length === 0) {
-        alert('You win!');
-        cancelAnimationFrame(gameLoop);
-        return;
-    }
-
-    if (enemies.some(enemy => enemy.y + enemy.height >= player.y)) {
-        alert('Game Over!');
-        cancelAnimationFrame(gameLoop);
-        return;
-    }
-
-    document.getElementById('score').textContent = `Score: ${score}`;
-    document.getElementById('lives').textContent = `Lives: ${lives}`;
-
-    gameLoop = requestAnimationFrame(update);
-}
-
-// Controls
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowLeft') player.move(-1);
-    if (e.key === 'ArrowRight') player.move(1);
-    if (e.key === ' ') player.shoot();
-});
-
-// Mobile controls
-document.getElementById('leftBtn').addEventListener('touchstart', () => player.move(-1));
-document.getElementById('rightBtn').addEventListener('touchstart', () => player.move(1));
-document.getElementById('fireBtn').addEventListener('touchstart', () => player.shoot());
-
-// Touch controls
-canvas.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    touchX = e.touches[0].clientX;
-});
-
-canvas.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    if (touchX === null) return;
-    
-    const currentX = e.touches[0].clientX;
-    const deltaX = currentX - touchX;
-    player.move(Math.sign(deltaX));
-    touchX = currentX;
-});
-
-canvas.addEventListener('touchend', () => {
-    touchX = null;
-    player.shoot();
-});
-
-// Initialize
-window.addEventListener('resize', resizeCanvas);
-resizeCanvas();
-
-// Start game
-initEnemies();
-update();
+const game = new Game();
+game.start();
