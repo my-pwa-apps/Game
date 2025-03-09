@@ -753,8 +753,13 @@ class Game {
                 }
             });
             
-            // Initialize next level
-            setTimeout(() => this.initEnemies(), 2000);
+            // Fix the setTimeout context issue by binding this
+            setTimeout(() => {
+                // Double-check we're still in a valid state when the timeout executes
+                if (this.state.gameState === GameState.PLAYING) {
+                    this.initEnemies();
+                }
+            }, 2000);
         } else {
             this.victory();
         }
@@ -792,6 +797,13 @@ class Game {
     }
 
     initEnemies() {
+        // Add safety check to prevent accessing non-existent levels
+        if (this.state.level < 1 || this.state.level > GAME_CONFIG.levels.length) {
+            console.error(`Invalid level index: ${this.state.level}`);
+            // Default to first level if the requested level doesn't exist
+            this.state.level = Math.min(Math.max(1, this.state.level), GAME_CONFIG.levels.length);
+        }
+
         const currentLevel = GAME_CONFIG.levels[this.state.level - 1];
         const rows = currentLevel.enemyRows;
         const cols = 8;
