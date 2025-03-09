@@ -29,12 +29,17 @@ const GAME_CONFIG = {
     ]
 };
 
+// Fix circular reference by using a global audio context
+const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
 class SoundManager {
     constructor() {
-        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        this.audioContext = audioContext;
+        this.isMuted = false;
     }
 
     playShoot() {
+        if (this.isMuted) return;
         const oscillator = this.audioContext.createOscillator();
         const gainNode = this.audioContext.createGain();
         
@@ -53,6 +58,7 @@ class SoundManager {
     }
 
     playExplosion() {
+        if (this.isMuted) return;
         const oscillator = this.audioContext.createOscillator();
         const gainNode = this.audioContext.createGain();
         
@@ -68,6 +74,10 @@ class SoundManager {
         
         oscillator.start();
         oscillator.stop(this.audioContext.currentTime + 0.2);
+    }
+
+    toggleMute() {
+        this.isMuted = !this.isMuted;
     }
 }
 
@@ -90,6 +100,9 @@ class Game {
         };
         
         this.soundManager = new SoundManager();
+        
+        // Create singleton reference for global access
+        window.gameInstance = this;
         
         this.init();
     }
@@ -156,53 +169,135 @@ class Game {
     }
 
     update(deltaTime) {
-        this.entities.forEach(entity => entity.update(deltaTime));
+        // Update player first
+        this.player.update(deltaTime);
+        
+        // Update enemies and movement
+        this.updateEnemyMovement(deltaTime);
+        
+        // Update other entities
+        this.entities.forEach(entity => {
+            if (!(entity instanceof Player)) {
+                entity.update(deltaTime);
+            }
+        });
+        
         this.checkCollisions();
         this.updateFPS(deltaTime);
     }
+    
+    updateEnemyMovement(deltaTime) {
+        const enemies = [...this.entities].filter(e => e instanceof Enemy);
+        if (enemies.length === 0) return;
+        
+        // Check if any enemy will hit the wall
+        let hitWall = false;
+        for (const enemy of enemies) {
+            if ((enemy.x <= 0 && enemy.direction < 0) || 
+                (enemy.x + enemy.width >= GAME_CONFIG.width && enemy.direction > 0)) {
+                hitWall = true;
+                break;
+            }
+        }
+        
+        // Change direction and move down if hit wall
+        if (hitWall) {
+            for (const enemy of enemies) {
+                enemy.direction *= -1;
+                enemy.y += 20;
+                
+                // Check if enemy reached player level - game over
+                if (enemy.y + enemy.height >= this.player.y) {
+                    this.gameOver();
+                    return;
+                }
+            }
+        }
+        
+        // Move all enemies horizontally
+        for (const enemy of enemies) {
+            enemy.move(enemy.direction);
+        }
+    }
 
     checkCollisions() {
-        const bullets = [...this.entities].filter(e => e instanceof Bullet);
+        const playerBullets = this.player.bullets;
         const enemies = [...this.entities].filter(e => e instanceof Enemy);
         
-        for (const bullet of bullets) {
-            for (const enemy of enemies) {
+        // Player bullets hitting enemies
+        for (let i = playerBullets.length - 1; i >= 0; i--) {
+            const bullet = playerBullets[i];
+            
+            for (let j = enemies.length - 1; j >= 0; j--) {
+                const enemy = enemies[j];
+                
                 if (this.checkCollision(bullet, enemy)) {
                     this.handleCollision(bullet, enemy);
+                    playerBullets.splice(i, 1);
                     break;
                 }
             }
         }
-
+        
+        // Enemy bullets hitting player
+        for (const enemy of enemies) {
+            for (let i = enemy.bullets.length - 1; i >= 0; i--) {
+                const bullet = enemy.bullets[i];
+                
+                if (this.checkCollision(bullet, this.player)) {
+                    enemy.bullets.splice(i, 1);
+                    this.state.lives--;
+                    this.updateLives();
+                    
+                    if (this.state.lives <= 0) {
+                        this.gameOver();
+                    }
+                    break;
+                }
+            }
+        }
+        
         if (enemies.length === 0) {
             this.nextLevel();
         }
     }
-
-    checkCollision(a, b) {
-        return !(a.x + a.width < b.x || 
-                a.x > b.x + b.width || 
-                a.y + a.height < b.y || 
-                a.y > b.y + b.height);
+    
+    gameOver() {
+        alert(`Game Over! Your final score: ${this.state.score}`);
+        this.stop();
     }
-
-    handleCollision(bullet, enemy) {
-        this.entities.delete(bullet);
-        this.entities.delete(enemy);
-        this.state.score += 10;
-        this.soundManager.playExplosion();
-        this.updateScore();
+    
+    updateLives() {
+        document.getElementById('lives').textContent = `Lives: ${this.state.lives}`;
     }
 
     render() {
         this.ctx.fillStyle = '#000';
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        this.player.draw(this.ctx); // Draw player explicitly
+        
+        // Draw stars (background)
+        this.drawBackground();
+        
+        // Draw player
+        this.player.draw(this.ctx);
+        
+        // Draw entities (enemies, bullets)
         this.entities.forEach(entity => {
-            if (!(entity instanceof Player)) { // Don't draw player twice
+            if (!(entity instanceof Player)) {
                 entity.draw(this.ctx);
             }
         });
+    }
+    
+    drawBackground() {
+        // Simple starfield
+        this.ctx.fillStyle = '#FFF';
+        for (let i = 0; i < 100; i++) {
+            const x = Math.random() * GAME_CONFIG.width;
+            const y = Math.random() * GAME_CONFIG.height;
+            const size = Math.random() * 2;
+            this.ctx.fillRect(x, y, size, size);
+        }
     }
 
     gameLoop(timestamp) {
@@ -319,7 +414,8 @@ class Player {
         if (now - this.lastShot >= this.shootDelay) {
             this.bullets.push(new Bullet(this.x + this.width / 2, this.y));
             this.lastShot = now;
-            game.soundManager.playShoot();
+            // Fix circular reference by using window.gameInstance
+            window.gameInstance.soundManager.playShoot();
         }
     }
 
@@ -341,6 +437,7 @@ class Enemy {
         this.bullets = [];
         this.lastShot = 0;
         this.type = type;
+        this.direction = 1; // Add direction property
     }
 
     draw(ctx) {
@@ -412,8 +509,13 @@ class Enemy {
     }
 
     shoot() {
-        if (Math.random() < 0.001) {
-            this.bullets.push(new Bullet(this.x + this.width / 2, this.y + this.height));
+        // Adjust probability based on level
+        const shootingChance = 0.001 * window.gameInstance.state.level;
+        
+        if (Math.random() < shootingChance) {
+            const bullet = new Bullet(this.x + this.width / 2, this.y + this.height);
+            bullet.speed = -bullet.speed; // Reverse direction for enemy bullets
+            this.bullets.push(bullet);
         }
     }
 
@@ -455,5 +557,8 @@ class Bullet {
     }
 }
 
-const game = new Game();
-game.start();
+// Initialize game when document is fully loaded
+document.addEventListener('DOMContentLoaded', () => {
+    const game = new Game();
+    game.start();
+});
