@@ -213,11 +213,12 @@ const GameState = {
     LEVEL_COMPLETE: 'levelComplete'
 };
 
-// Add object pooling for explosions to improve performance
+// Optimize ObjectPool for better memory management
 class ObjectPool {
     constructor(objectType, initialSize = 20) {
         this.objectType = objectType;
         this.pool = [];
+        this.activeObjects = new Set(); // Track active objects
         this.grow(initialSize);
     }
     
@@ -234,11 +235,19 @@ class ObjectPool {
         
         const object = this.pool.pop();
         object.reset(params);
+        this.activeObjects.add(object); // Track object as active
         return object;
     }
     
     release(object) {
+        this.activeObjects.delete(object); // Remove from active tracking
         this.pool.push(object);
+    }
+    
+    // New method to release all objects (useful for cleanup)
+    releaseAll() {
+        this.activeObjects.forEach(obj => this.pool.push(obj));
+        this.activeObjects.clear();
     }
 }
 
@@ -378,6 +387,13 @@ class Game {
         // Add a flag to track level transitions
         this.isTransitioningLevel = false;
 
+        // Add performance monitoring
+        this.lastFpsUpdate = 0;
+        this.framesThisSecond = 0;
+        
+        // Prevent zombie intervals/timeouts
+        this.activeTimeouts = new Set();
+
         this.init();
     }
 
@@ -507,14 +523,18 @@ class Game {
             }
         }
         
-        // Update explosions with proper memory management
-        this.explosions = this.explosions.filter(explosion => {
+        // Optimize explosion updates by using for loop instead of filter
+        const remainingExplosions = [];
+        for (let i = 0; i < this.explosions.length; i++) {
+            const explosion = this.explosions[i];
             const active = explosion.update();
-            if (!active) {
+            if (active) {
+                remainingExplosions.push(explosion);
+            } else {
                 this.explosionPool.release(explosion);
             }
-            return active;
-        });
+        }
+        this.explosions = remainingExplosions;
 
         // Update player first
         this.player.update(deltaTime);
@@ -709,9 +729,15 @@ class Game {
     }
 
     updateFPS(deltaTime) {
-        if (++this.frameCount % 30 === 0) {
-            const fps = Math.round(1000 / deltaTime);
+        this.framesThisSecond++;
+        
+        const now = performance.now();
+        if (now - this.lastFpsUpdate >= 1000) { // Update once per second
+            const fps = this.framesThisSecond;
             document.getElementById('fps').textContent = `FPS: ${fps}`;
+            
+            this.framesThisSecond = 0;
+            this.lastFpsUpdate = now;
         }
     }
 
@@ -723,20 +749,35 @@ class Game {
 
     stop() {
         this.state.isRunning = false;
-        // Cancel player movement interval to prevent memory leaks
+        
+        // Cleanup all resources
         clearInterval(this.playerMovementInterval);
+        this.clearAllTimeouts();
+        
+        // Make sure any bonus ship is removed
+        this.bonusShip = null;
     }
 
     startGame() {
+        // Stop any previous game
+        this.stop();
+        
+        // Reset state
         this.state.gameState = GameState.PLAYING;
         this.state.score = 0;
         this.state.lives = 3;
         this.state.level = 1;
+        this.isTransitioningLevel = false;
         this.updateScore();
         this.updateLives();
         
+        // Clear explosion array
+        this.explosions.forEach(explosion => this.explosionPool.release(explosion));
+        this.explosions = [];
+        
         // Reset entities and initialize
         this.entities = new Set();
+        this.player = new Player();
         this.entities.add(this.player);
         this.initEnemies();
         
@@ -769,19 +810,14 @@ class Game {
         levelMessage.innerHTML = `PREPARE FOR LEVEL ${this.state.level}`;
         document.getElementById('game-container').appendChild(levelMessage);
         
-        // Clear all enemy bullets between levels
-        this.entities.forEach(entity => {
-            if (entity instanceof Enemy) {
-                entity.bullets.forEach(bullet => this.bulletPool.release(bullet));
-                entity.bullets = [];
-            }
-        });
+        // Clear all entities except player
+        this.cleanupEntities();
         
         // Initialize next level after a delay
-        setTimeout(() => {
+        this.setTrackedTimeout(() => {
             // Remove the level message
             levelMessage.classList.add('fade-out');
-            setTimeout(() => levelMessage.remove(), 1000);
+            this.setTrackedTimeout(() => levelMessage.remove(), 1000);
             
             // Make sure we're still playing
             if (this.state.gameState === GameState.PLAYING) {
@@ -839,7 +875,7 @@ class Game {
         const colors = ['#0f0', '#00f', '#f0f', '#ff0', '#0ff'];
         
         const createRandomExplosion = (index) => {
-            setTimeout(() => {
+            this.setTrackedTimeout(() => {
                 const x = Math.random() * GAME_CONFIG.width;
                 const y = Math.random() * (GAME_CONFIG.height * 0.7);
                 const color = colors[Math.floor(Math.random() * colors.length)];
@@ -950,9 +986,9 @@ class Game {
         document.getElementById('game-container').appendChild(messageEl);
         
         // Remove after animation
-        setTimeout(() => {
+        this.setTrackedTimeout(() => {
             messageEl.classList.add('fade-out');
-            setTimeout(() => messageEl.remove(), 1000);
+            this.setTrackedTimeout(() => messageEl.remove(), 1000);
         }, 2000);
     }
 
@@ -1007,17 +1043,28 @@ class Game {
     gameLoop(timestamp) {
         if (!this.state.isRunning) return;
 
-        const deltaTime = timestamp - this.lastTime;
+        const deltaTime = Math.min(timestamp - this.lastTime, 100); // Cap at 100ms to prevent large jumps
         this.lastTime = timestamp;
 
         this.accumulator += deltaTime;
         
-        while (this.accumulator >= this.timeStep) {
+        // Use a fixed number of updates to prevent spiral of death
+        let updateCount = 0;
+        const MAX_UPDATES = 5;
+        
+        while (this.accumulator >= this.timeStep && updateCount < MAX_UPDATES) {
             this.update(this.timeStep);
             this.accumulator -= this.timeStep;
+            updateCount++;
+        }
+        
+        // If we hit the update cap, just discard remaining time
+        if (updateCount >= MAX_UPDATES) {
+            this.accumulator = 0;
         }
 
         this.render();
+        this.framesThisSecond++;
         requestAnimationFrame(this.gameLoop.bind(this));
     }
 
@@ -1145,6 +1192,37 @@ class Game {
         };
         
         window.addEventListener('keydown', restartHandler);
+    }
+
+    // Replace setTimeout with tracked version
+    setTrackedTimeout(callback, delay) {
+        const timeoutId = setTimeout(() => {
+            this.activeTimeouts.delete(timeoutId);
+            callback();
+        }, delay);
+        
+        this.activeTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+    
+    // Clear all active timeouts
+    clearAllTimeouts() {
+        this.activeTimeouts.forEach(id => clearTimeout(id));
+        this.activeTimeouts.clear();
+    }
+
+    // Add a new method to clean up entities between levels
+    cleanupEntities() {
+        // Keep only the player
+        const player = [...this.entities].find(e => e instanceof Player);
+        this.entities.clear();
+        
+        if (player) {
+            this.entities.add(player);
+        }
+        
+        // Clean up all bullet pools
+        this.bulletPool.releaseAll();
     }
 }
 
@@ -1421,6 +1499,7 @@ class Player {
     }
 }
 
+// Optimize Enemy class performance
 class Enemy {
     constructor(x, y, type = 'basic') {
         this.x = x;
@@ -1507,16 +1586,9 @@ class Enemy {
     shoot() {
         // Only allow a certain number of bullets on screen per level
         const maxEnemyBullets = Math.min(3 + window.gameInstance.state.level, 20);
-        let totalEnemyBullets = 0;
         
-        // Count existing enemy bullets
-        const enemies = [...window.gameInstance.entities].filter(e => e instanceof Enemy);
-        for (const enemy of enemies) {
-            totalEnemyBullets += enemy.bullets.length;
-        }
-        
-        // Don't shoot if there are already too many bullets
-        if (totalEnemyBullets >= maxEnemyBullets) {
+        // Don't calculate total bullets every time - optimize with static count
+        if (Enemy.totalActiveBullets >= maxEnemyBullets) {
             return;
         }
         
@@ -1535,8 +1607,9 @@ class Enemy {
             });
             
             this.bullets.push(bullet);
+            Enemy.totalActiveBullets++;
             this.lastShot = now;
-            this.shootDelay = 2000 + Math.random() * (8000 - window.gameInstance.state.level * 500); // More delay in early levels
+            this.shootDelay = 2000 + Math.random() * (8000 - window.gameInstance.state.level * 500);
         }
     }
 
@@ -1544,20 +1617,28 @@ class Enemy {
         // Apply frame rate compensation
         const speedMultiplier = window.gameInstance.deltaMultiplier;
         
-        // Update existing bullets with proper object pooling
-        this.bullets = this.bullets.filter(bullet => {
+        // Optimize bullet updating with for loop instead of filter
+        const remainingBullets = [];
+        for (let i = 0; i < this.bullets.length; i++) {
+            const bullet = this.bullets[i];
             bullet.update(deltaTime);
+            
             if (bullet.y <= 0 || bullet.y >= GAME_CONFIG.height) {
                 window.gameInstance.bulletPool.release(bullet);
-                return false;
+                Enemy.totalActiveBullets--;
+            } else {
+                remainingBullets.push(bullet);
             }
-            return true;
-        });
+        }
+        this.bullets = remainingBullets;
         
         // Try to shoot
         this.shoot();
     }
 }
+
+// Static counter for total enemy bullets on screen
+Enemy.totalActiveBullets = 0;
 
 class Bullet {
     constructor() {
@@ -1608,19 +1689,31 @@ class Bullet {
 window.addEventListener('DOMContentLoaded', () => {
     if (window.gameInstance) return;
     
-    const game = new Game();
-    
-    // Try to unlock audio on first user interaction
-    const unlockAudio = () => {
-        game.initAudio();
+    // Add error handling for the game initialization
+    try {
+        const game = new Game();
+        
+        // Try to unlock audio on first user interaction
+        const unlockAudio = () => {
+            try {
+                game.initAudio();
+            } catch (e) {
+                console.error('Failed to initialize audio:', e);
+            }
+            
+            ['click', 'touchstart', 'keydown'].forEach(event => {
+                document.removeEventListener(event, unlockAudio);
+            });
+        };
+        
         ['click', 'touchstart', 'keydown'].forEach(event => {
-            document.removeEventListener(event, unlockAudio);
+            document.addEventListener(event, unlockAudio, { once: true });
         });
-    };
-    
-    ['click', 'touchstart', 'keydown'].forEach(event => {
-        document.addEventListener(event, unlockAudio, { once: true });
-    });
-    
-    game.start();
+        
+        game.start();
+    } catch (e) {
+        console.error('Failed to initialize game:', e);
+        document.getElementById('game-container').innerHTML = 
+            '<div class="error-message">Failed to initialize game. Please refresh the page.</div>';
+    }
 });
