@@ -98,6 +98,25 @@ class SoundManager {
     toggleMute() {
         this.isMuted = !this.isMuted;
     }
+
+    playPlayerHit() {
+        if (this.isMuted) return;
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.type = 'triangle';
+        oscillator.frequency.setValueAtTime(200, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(50, this.audioContext.currentTime + 0.3);
+        
+        gainNode.gain.setValueAtTime(0.4, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.start();
+        oscillator.stop(this.audioContext.currentTime + 0.3);
+    }
 }
 
 // Add game state constants for better state management
@@ -108,6 +127,64 @@ const GameState = {
     GAME_OVER: 'gameOver',
     LEVEL_COMPLETE: 'levelComplete'
 };
+
+// Add Explosion class to handle explosion animations
+class Explosion {
+    constructor(x, y, color = '#ff0', size = 30) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.color = color;
+        this.particles = [];
+        this.lifetime = 30; // frames
+        this.age = 0;
+        this.createParticles();
+    }
+    
+    createParticles() {
+        const particleCount = 20;
+        for (let i = 0; i < particleCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 0.5 + Math.random() * 2;
+            this.particles.push({
+                x: 0,
+                y: 0,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                size: 1 + Math.random() * 3,
+                alpha: 1
+            });
+        }
+    }
+    
+    update() {
+        this.age++;
+        
+        for (const particle of this.particles) {
+            particle.x += particle.vx;
+            particle.y += particle.vy;
+            particle.alpha = 1 - (this.age / this.lifetime);
+        }
+        
+        // Return false when explosion is complete
+        return this.age < this.lifetime;
+    }
+    
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        
+        for (const particle of this.particles) {
+            ctx.globalAlpha = particle.alpha;
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        ctx.restore();
+    }
+}
 
 class Game {
     constructor() {
@@ -145,6 +222,11 @@ class Game {
         this.lastAlienSound = 0;
         this.alienSoundInterval = 800; // ms between alien movement sounds
         this.debug = false; // Set to true for debugging
+
+        this.explosions = [];
+        this.playerInvulnerable = false;
+        this.playerInvulnerableTime = 0;
+        this.playerInvulnerableDuration = 1500; // 1.5 seconds of invulnerability
 
         this.init();
     }
@@ -245,6 +327,17 @@ class Game {
     update(deltaTime) {
         if (this.state.gameState !== GameState.PLAYING) return;
         
+        // Update player invulnerability
+        if (this.playerInvulnerable) {
+            this.playerInvulnerableTime += deltaTime;
+            if (this.playerInvulnerableTime >= this.playerInvulnerableDuration) {
+                this.playerInvulnerable = false;
+            }
+        }
+        
+        // Update explosions
+        this.explosions = this.explosions.filter(explosion => explosion.update());
+
         // Update player first
         this.player.update(deltaTime);
         
@@ -322,21 +415,38 @@ class Game {
             }
         }
         
-        // Enemy bullets hitting player
-        for (const enemy of enemies) {
-            for (let i = enemy.bullets.length - 1; i >= 0; i--) {
-                const bullet = enemy.bullets[i];
-                
-                if (this.checkCollision(bullet, this.player)) {
-                    enemy.bullets.splice(i, 1);
-                    this.state.lives--;
-                    this.updateLives();
-                    this.soundManager.playExplosion();
+        // Enemy bullets hitting player - only if player is not invulnerable
+        if (!this.playerInvulnerable) {
+            for (const enemy of enemies) {
+                for (let i = enemy.bullets.length - 1; i >= 0; i--) {
+                    const bullet = enemy.bullets[i];
                     
-                    if (this.state.lives <= 0) {
-                        this.gameOver("You ran out of lives!");
+                    if (this.checkCollision(bullet, this.player)) {
+                        // Create explosion at player hit position
+                        this.explosions.push(
+                            new Explosion(bullet.x, bullet.y, '#0f8', 20)
+                        );
+                        
+                        enemy.bullets.splice(i, 1);
+                        this.state.lives--;
+                        this.updateLives();
+                        this.soundManager.playPlayerHit();
+                        
+                        // Make player invulnerable briefly
+                        this.playerInvulnerable = true;
+                        this.playerInvulnerableTime = 0;
+                        
+                        if (this.state.lives <= 0) {
+                            // Big explosion for game over
+                            this.explosions.push(
+                                new Explosion(this.player.x + this.player.width/2, 
+                                             this.player.y + this.player.height/2, 
+                                             '#0f0', 60)
+                            );
+                            this.gameOver("You ran out of lives!");
+                        }
+                        break;
                     }
-                    break;
                 }
             }
         }
@@ -355,6 +465,11 @@ class Game {
     }
 
     handleCollision(bullet, enemy) {
+        // Create explosion at enemy position
+        this.explosions.push(
+            new Explosion(enemy.x + enemy.width/2, enemy.y + enemy.height/2, '#f88')
+        );
+        
         this.entities.delete(enemy);
         this.state.score += 10;
         this.soundManager.playExplosion();
@@ -419,8 +534,10 @@ class Game {
             return;
         }
         
-        // Draw player first
-        this.player.draw(this.ctx);
+        // Draw player with blinking effect when invulnerable
+        if (!this.playerInvulnerable || Math.floor(Date.now() / 100) % 2) {
+            this.player.draw(this.ctx);
+        }
         
         // Draw entities (enemies and their bullets)
         this.entities.forEach(entity => {
@@ -430,6 +547,9 @@ class Game {
                 entity.bullets.forEach(bullet => bullet.draw(this.ctx));
             }
         });
+
+        // Draw explosions over everything else
+        this.explosions.forEach(explosion => explosion.draw(this.ctx));
     }
     
     // Fix random background stars so they don't flicker
