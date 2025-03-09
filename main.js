@@ -2,8 +2,67 @@ const GAME_CONFIG = {
     width: 800,
     height: 600,
     fps: 60,
-    scale: window.devicePixelRatio || 1
+    scale: window.devicePixelRatio || 1,
+    levels: [
+        {
+            enemyRows: 3,
+            enemySpeed: 1,
+            enemyType: 'basic'
+        },
+        {
+            enemyRows: 4,
+            enemySpeed: 1.2,
+            enemyType: 'advanced'
+        },
+        {
+            enemyRows: 5,
+            enemySpeed: 1.5,
+            enemyType: 'boss'
+        }
+    ]
 };
+
+class SoundManager {
+    constructor() {
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    playShoot() {
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(110, this.audioContext.currentTime + 0.1);
+        
+        gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.start();
+        oscillator.stop(this.audioContext.currentTime + 0.1);
+    }
+
+    playExplosion() {
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.type = 'sawtooth';
+        oscillator.frequency.setValueAtTime(100, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(1, this.audioContext.currentTime + 0.2);
+        
+        gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.start();
+        oscillator.stop(this.audioContext.currentTime + 0.2);
+    }
+}
 
 class Game {
     constructor() {
@@ -18,8 +77,12 @@ class Game {
             score: 0,
             lives: 3,
             isRunning: false,
-            touches: new Map()
+            touches: new Map(),
+            level: 1,
+            maxLevel: GAME_CONFIG.levels.length
         };
+        
+        this.soundManager = new SoundManager();
         
         this.init();
     }
@@ -82,6 +145,10 @@ class Game {
                 }
             }
         }
+
+        if (enemies.length === 0) {
+            this.nextLevel();
+        }
     }
 
     checkCollision(a, b) {
@@ -95,6 +162,7 @@ class Game {
         this.entities.delete(bullet);
         this.entities.delete(enemy);
         this.state.score += 10;
+        this.soundManager.playExplosion();
         this.updateScore();
     }
 
@@ -137,6 +205,20 @@ class Game {
     stop() {
         this.state.isRunning = false;
     }
+
+    nextLevel() {
+        this.state.level++;
+        if (this.state.level <= this.state.maxLevel) {
+            this.initEnemies();
+        } else {
+            this.victory();
+        }
+    }
+
+    victory() {
+        alert(`Congratulations! You completed all ${this.state.maxLevel} levels!`);
+        this.stop();
+    }
 }
 
 class Player {
@@ -153,13 +235,24 @@ class Player {
 
     draw(ctx) {
         ctx.fillStyle = '#0f0';
-        // Draw player ship as triangle
         ctx.beginPath();
+        // Draw spaceship body
         ctx.moveTo(this.x + this.width / 2, this.y);
-        ctx.lineTo(this.x, this.y + this.height);
         ctx.lineTo(this.x + this.width, this.y + this.height);
+        ctx.lineTo(this.x + this.width * 0.8, this.y + this.height * 0.8);
+        ctx.lineTo(this.x + this.width * 0.6, this.y + this.height);
+        ctx.lineTo(this.x + this.width * 0.4, this.y + this.height);
+        ctx.lineTo(this.x + this.width * 0.2, this.y + this.height * 0.8);
+        ctx.lineTo(this.x, this.y + this.height);
         ctx.closePath();
         ctx.fill();
+
+        // Draw cockpit
+        ctx.fillStyle = '#00f';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width / 2, this.y + this.height * 0.4, this.width * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+
         this.bullets.forEach(bullet => bullet.draw(ctx));
     }
 
@@ -172,7 +265,7 @@ class Player {
         if (now - this.lastShot >= this.shootDelay) {
             this.bullets.push(new Bullet(this.x + this.width / 2, this.y));
             this.lastShot = now;
-            document.getElementById('shootSound').cloneNode().play();
+            game.soundManager.playShoot();
         }
     }
 
@@ -185,27 +278,78 @@ class Player {
 }
 
 class Enemy {
-    constructor(x, y) {
+    constructor(x, y, type = 'basic') {
         this.x = x;
         this.y = y;
         this.width = ENEMY_WIDTH;
         this.height = ENEMY_HEIGHT;
-        this.speed = 1;
+        this.speed = GAME_CONFIG.levels[game.state.level - 1].enemySpeed;
         this.bullets = [];
         this.lastShot = 0;
+        this.type = type;
     }
 
     draw(ctx) {
+        switch(this.type) {
+            case 'basic':
+                this.drawBasicAlien(ctx);
+                break;
+            case 'advanced':
+                this.drawAdvancedAlien(ctx);
+                break;
+            case 'boss':
+                this.drawBossAlien(ctx);
+                break;
+        }
+    }
+
+    drawBasicAlien(ctx) {
         ctx.fillStyle = '#f00';
-        // Draw enemy as invader-like shape
+        // Draw alien head
         ctx.beginPath();
-        ctx.moveTo(this.x, this.y + this.height / 2);
-        ctx.lineTo(this.x + this.width / 4, this.y);
-        ctx.lineTo(this.x + this.width * 3/4, this.y);
-        ctx.lineTo(this.x + this.width, this.y + this.height / 2);
-        ctx.lineTo(this.x + this.width * 3/4, this.y + this.height);
-        ctx.lineTo(this.x + this.width / 4, this.y + this.height);
+        ctx.arc(this.x + this.width/2, this.y + this.height*0.4, this.width*0.3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw eyes
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width*0.35, this.y + this.height*0.35, this.width*0.08, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width*0.65, this.y + this.height*0.35, this.width*0.08, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    drawAdvancedAlien(ctx) {
+        ctx.fillStyle = '#f0f';
+        // Draw UFO body
+        ctx.beginPath();
+        ctx.ellipse(this.x + this.width/2, this.y + this.height*0.6, this.width*0.5, this.height*0.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw dome
+        ctx.fillStyle = '#ff0';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width/2, this.y + this.height*0.4, this.width*0.25, Math.PI, 0);
+        ctx.fill();
+    }
+
+    drawBossAlien(ctx) {
+        ctx.fillStyle = '#f00';
+        // Draw mothership
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y + this.height*0.5);
+        ctx.lineTo(this.x + this.width*0.2, this.y + this.height*0.3);
+        ctx.lineTo(this.x + this.width*0.8, this.y + this.height*0.3);
+        ctx.lineTo(this.x + this.width, this.y + this.height*0.5);
+        ctx.lineTo(this.x + this.width*0.8, this.y + this.height*0.7);
+        ctx.lineTo(this.x + this.width*0.2, this.y + this.height*0.7);
         ctx.closePath();
+        ctx.fill();
+
+        // Draw weapon ports
+        ctx.fillStyle = '#ff0';
+        ctx.beginPath();
+        ctx.rect(this.x + this.width*0.3, this.y + this.height*0.6, this.width*0.1, this.height*0.1);
+        ctx.rect(this.x + this.width*0.6, this.y + this.height*0.6, this.width*0.1, this.height*0.1);
         ctx.fill();
     }
 
@@ -231,7 +375,16 @@ class Bullet {
 
     draw(ctx) {
         ctx.fillStyle = '#fff';
-        ctx.fillRect(this.x - this.width / 2, this.y, this.width, this.height);
+        // Draw laser bolt
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        ctx.lineTo(this.x - this.width, this.y + this.height*0.3);
+        ctx.lineTo(this.x - this.width, this.y + this.height*0.7);
+        ctx.lineTo(this.x, this.y + this.height);
+        ctx.lineTo(this.x + this.width, this.y + this.height*0.7);
+        ctx.lineTo(this.x + this.width, this.y + this.height*0.3);
+        ctx.closePath();
+        ctx.fill();
     }
 
     update(deltaTime) {
