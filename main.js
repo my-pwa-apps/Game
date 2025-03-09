@@ -81,6 +81,15 @@ class SoundManager {
     }
 }
 
+// Add game state constants for better state management
+const GameState = {
+    MENU: 'menu',
+    PLAYING: 'playing',
+    PAUSED: 'paused',
+    GAME_OVER: 'gameOver',
+    LEVEL_COMPLETE: 'levelComplete'
+};
+
 class Game {
     constructor() {
         this.canvas = document.getElementById('gameCanvas');
@@ -96,13 +105,23 @@ class Game {
             isRunning: false,
             touches: new Map(),
             level: 1,
-            maxLevel: GAME_CONFIG.levels.length
+            maxLevel: GAME_CONFIG.levels.length,
+            gameState: GameState.MENU
         };
         
         this.soundManager = new SoundManager();
         
         // Create singleton reference for global access
         window.gameInstance = this;
+        
+        // Create offscreen canvas for background rendering
+        this.offscreenCanvas = document.createElement('canvas');
+        this.offscreenCanvas.width = GAME_CONFIG.width;
+        this.offscreenCanvas.height = GAME_CONFIG.height;
+        this.offscreenCtx = this.offscreenCanvas.getContext('2d');
+        
+        // Create object pools for bullets to reduce garbage collection
+        this.bulletPool = [];
         
         this.init();
     }
@@ -114,6 +133,8 @@ class Game {
         this.entities = new Set();
         this.entities.add(this.player); // Add player to entities
         this.initEnemies();
+        this.prepareBackgroundStars();
+        this.bindKeys();
     }
 
     setupCanvas() {
@@ -137,6 +158,36 @@ class Game {
         Object.entries(handlers).forEach(([event, handler]) => {
             window.addEventListener(event, handler.bind(this), { passive: false });
         });
+    }
+    
+    // Separate method for keyboard handling to improve event management
+    bindKeys() {
+        const keyState = {};
+        
+        window.addEventListener('keydown', (e) => {
+            keyState[e.key] = true;
+            if (e.key === ' ' && this.state.gameState === GameState.PLAYING) {
+                this.player.shoot();
+            } else if (e.key === 'p') {
+                this.togglePause();
+            } else if (e.key === 'm') {
+                this.soundManager.toggleMute();
+            } else if (e.key === 'Enter' && this.state.gameState === GameState.MENU) {
+                this.startGame();
+            }
+        });
+        
+        window.addEventListener('keyup', (e) => {
+            keyState[e.key] = false;
+        });
+        
+        // Handle continuous movement
+        this.playerMovementInterval = setInterval(() => {
+            if (this.state.gameState !== GameState.PLAYING) return;
+            
+            if (keyState['ArrowLeft']) this.player.move(-1);
+            if (keyState['ArrowRight']) this.player.move(1);
+        }, 16);
     }
 
     handleKeyboard(e) {
@@ -169,6 +220,8 @@ class Game {
     }
 
     update(deltaTime) {
+        if (this.state.gameState !== GameState.PLAYING) return;
+        
         // Update player first
         this.player.update(deltaTime);
         
@@ -278,8 +331,34 @@ class Game {
     }
     
     gameOver() {
-        alert(`Game Over! Your final score: ${this.state.score}`);
+        this.state.gameState = GameState.GAME_OVER;
+        
+        // Show game over screen instead of alert
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+        
+        this.ctx.fillStyle = '#f00';
+        this.ctx.font = '40px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('GAME OVER', GAME_CONFIG.width/2, GAME_CONFIG.height/3);
+        
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '20px Arial';
+        this.ctx.fillText(`Final Score: ${this.state.score}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2);
+        this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+        
+        // Stop the game loop
         this.stop();
+        
+        // Setup event listener for restart
+        const restartHandler = (e) => {
+            if (e.key === 'Enter') {
+                window.removeEventListener('keydown', restartHandler);
+                this.startGame();
+            }
+        };
+        
+        window.addEventListener('keydown', restartHandler);
     }
     
     updateLives() {
@@ -287,11 +366,22 @@ class Game {
     }
 
     render() {
+        // Clear the canvas
         this.ctx.fillStyle = '#000';
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
-        // Draw stars (background)
+        // Draw background
         this.drawBackground();
+        
+        if (this.state.gameState === GameState.MENU) {
+            this.renderMenu();
+            return;
+        }
+        
+        if (this.state.gameState === GameState.PAUSED) {
+            this.renderPauseScreen();
+            return;
+        }
         
         // Draw player
         this.player.draw(this.ctx);
@@ -306,20 +396,61 @@ class Game {
     
     // Fix random background stars so they don't flicker
     drawBackground() {
-        if (!this.stars) {
-            // Generate stars once
-            this.stars = Array.from({length: 100}, () => ({
-                x: Math.random() * GAME_CONFIG.width,
-                y: Math.random() * GAME_CONFIG.height,
-                size: Math.random() * 2
-            }));
-        }
+        // Simply copy the pre-rendered background
+        this.ctx.drawImage(this.offscreenCanvas, 0, 0);
+    }
+    
+    prepareBackgroundStars() {
+        // Generate and render stars once to offscreen canvas
+        this.offscreenCtx.fillStyle = '#000';
+        this.offscreenCtx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
         
-        // Draw the stars
-        this.ctx.fillStyle = '#FFF';
-        for (const star of this.stars) {
-            this.ctx.fillRect(star.x, star.y, star.size, star.size);
+        this.offscreenCtx.fillStyle = '#FFF';
+        for (let i = 0; i < 100; i++) {
+            const x = Math.random() * GAME_CONFIG.width;
+            const y = Math.random() * GAME_CONFIG.height;
+            const size = Math.random() * 2;
+            this.offscreenCtx.fillRect(x, y, size, size);
         }
+    }
+
+    renderMenu() {
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '40px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('SPACE INVADERS', GAME_CONFIG.width/2, GAME_CONFIG.height/3);
+        
+        this.ctx.font = '20px Arial';
+        this.ctx.fillText('Press ENTER to start', GAME_CONFIG.width/2, GAME_CONFIG.height/2);
+        
+        this.ctx.font = '16px Arial';
+        this.ctx.fillText('Controls: Arrows to move, Space to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+        this.ctx.fillText('P to pause, M to mute', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.65);
+        
+        // Draw a small player ship for visual appeal
+        this.ctx.save();
+        this.ctx.translate(GAME_CONFIG.width/2, GAME_CONFIG.height * 0.8);
+        this.ctx.fillStyle = '#0f0';
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, -15);
+        this.ctx.lineTo(25, 15);
+        this.ctx.lineTo(-25, 15);
+        this.ctx.closePath();
+        this.ctx.fill();
+        this.ctx.restore();
+    }
+    
+    renderPauseScreen() {
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+        
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '40px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('PAUSED', GAME_CONFIG.width/2, GAME_CONFIG.height/2);
+        
+        this.ctx.font = '20px Arial';
+        this.ctx.fillText('Press P to resume', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
     }
 
     gameLoop(timestamp) {
@@ -354,6 +485,32 @@ class Game {
 
     stop() {
         this.state.isRunning = false;
+        // Cancel player movement interval to prevent memory leaks
+        clearInterval(this.playerMovementInterval);
+    }
+
+    startGame() {
+        this.state.gameState = GameState.PLAYING;
+        this.state.score = 0;
+        this.state.lives = 3;
+        this.state.level = 1;
+        this.updateScore();
+        this.updateLives();
+        
+        // Reset entities and initialize
+        this.entities = new Set();
+        this.entities.add(this.player);
+        this.initEnemies();
+        
+        this.start();
+    }
+    
+    togglePause() {
+        if (this.state.gameState === GameState.PLAYING) {
+            this.state.gameState = GameState.PAUSED;
+        } else if (this.state.gameState === GameState.PAUSED) {
+            this.state.gameState = GameState.PLAYING;
+        }
     }
 
     nextLevel() {
@@ -389,6 +546,28 @@ class Game {
 
     updateScore() {
         document.getElementById('score').textContent = `Score: ${this.state.score}`;
+    }
+    
+    // Create a reusable bullet to reduce object creation
+    createBullet(x, y, isEnemy = false) {
+        // Check bullet pool first
+        let bullet;
+        if (this.bulletPool.length > 0) {
+            bullet = this.bulletPool.pop();
+            bullet.x = x;
+            bullet.y = y;
+            bullet.speed = isEnemy ? -7 : 7;
+        } else {
+            bullet = new Bullet(x, y);
+            if (isEnemy) bullet.speed = -bullet.speed;
+        }
+        return bullet;
+    }
+    
+    // Return bullet to pool when no longer needed
+    recycleBullet(bullet) {
+        // Reset bullet state
+        this.bulletPool.push(bullet);
     }
 }
 
@@ -531,12 +710,15 @@ class Enemy {
     }
 
     shoot() {
-        // Adjust probability based on level
+        // Adjust probability based on level and use object pooling
         const shootingChance = 0.001 * window.gameInstance.state.level;
         
         if (Math.random() < shootingChance) {
-            const bullet = new Bullet(this.x + this.width / 2, this.y + this.height);
-            bullet.speed = -bullet.speed; // Reverse direction for enemy bullets
+            const bullet = window.gameInstance.createBullet(
+                this.x + this.width / 2, 
+                this.y + this.height,
+                true
+            );
             this.bullets.push(bullet);
         }
     }
@@ -579,8 +761,10 @@ class Bullet {
     }
 }
 
-// Initialize game when document is fully loaded
-document.addEventListener('DOMContentLoaded', () => {
-    const game = new Game();
-    game.start();
+// Initialize game on load and prevent creating multiple instances
+window.addEventListener('DOMContentLoaded', () => {
+    if (!window.gameInstance) {
+        const game = new Game();
+        game.start();
+    }
 });
