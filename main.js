@@ -262,6 +262,21 @@ class Game {
         }
     }
     
+    // Add the missing checkCollision method
+    checkCollision(a, b) {
+        return !(a.x + a.width < b.x || 
+                a.x > b.x + b.width || 
+                a.y + a.height < b.y || 
+                a.y > b.y + b.height);
+    }
+
+    handleCollision(bullet, enemy) {
+        this.entities.delete(enemy);
+        this.state.score += 10;
+        this.soundManager.playExplosion();
+        this.updateScore();
+    }
+    
     gameOver() {
         alert(`Game Over! Your final score: ${this.state.score}`);
         this.stop();
@@ -289,14 +304,21 @@ class Game {
         });
     }
     
+    // Fix random background stars so they don't flicker
     drawBackground() {
-        // Simple starfield
+        if (!this.stars) {
+            // Generate stars once
+            this.stars = Array.from({length: 100}, () => ({
+                x: Math.random() * GAME_CONFIG.width,
+                y: Math.random() * GAME_CONFIG.height,
+                size: Math.random() * 2
+            }));
+        }
+        
+        // Draw the stars
         this.ctx.fillStyle = '#FFF';
-        for (let i = 0; i < 100; i++) {
-            const x = Math.random() * GAME_CONFIG.width;
-            const y = Math.random() * GAME_CONFIG.height;
-            const size = Math.random() * 2;
-            this.ctx.fillRect(x, y, size, size);
+        for (const star of this.stars) {
+            this.ctx.fillRect(star.x, star.y, star.size, star.size);
         }
     }
 
