@@ -581,10 +581,18 @@ class Game {
         const playerBullets = this.player.bullets;
         const enemies = [...this.entities].filter(e => e instanceof Enemy);
         
-        // Early return if no enemies or bullets
+        // Early return if no enemies or we're already transitioning
         if (enemies.length === 0 && !this.isTransitioningLevel) {
             this.isTransitioningLevel = true;  // Set flag to prevent multiple calls
-            this.handleGameEvent('levelComplete');
+            
+            // Check if this was the final level
+            if (this.state.level >= this.state.maxLevel) {
+                // If we completed the final level, trigger victory
+                this.handleGameEvent('gameVictory');
+            } else {
+                // Otherwise proceed to the next level
+                this.handleGameEvent('levelComplete');
+            }
             return;
         }
         
@@ -749,46 +757,55 @@ class Game {
         
         this.state.level++;
         
+        // Double check we're not exceeding max level
+        if (this.state.level > this.state.maxLevel) {
+            this.victory();
+            return;
+        }
+        
         // Show a level transition message
         const levelMessage = document.createElement('div');
         levelMessage.className = 'level-message';
         levelMessage.innerHTML = `PREPARE FOR LEVEL ${this.state.level}`;
         document.getElementById('game-container').appendChild(levelMessage);
         
-        if (this.state.level <= this.state.maxLevel) {
-            // Clear all enemy bullets between levels
-            this.entities.forEach(entity => {
-                if (entity instanceof Enemy) {
-                    entity.bullets.forEach(bullet => this.bulletPool.release(bullet));
-                    entity.bullets = [];
-                }
-            });
+        // Clear all enemy bullets between levels
+        this.entities.forEach(entity => {
+            if (entity instanceof Enemy) {
+                entity.bullets.forEach(bullet => this.bulletPool.release(bullet));
+                entity.bullets = [];
+            }
+        });
+        
+        // Initialize next level after a delay
+        setTimeout(() => {
+            // Remove the level message
+            levelMessage.classList.add('fade-out');
+            setTimeout(() => levelMessage.remove(), 1000);
             
-            // Initialize next level after a delay
-            setTimeout(() => {
-                // Remove the level message
-                levelMessage.classList.add('fade-out');
-                setTimeout(() => levelMessage.remove(), 1000);
-                
-                // Make sure we're still playing
-                if (this.state.gameState === GameState.PLAYING) {
-                    this.initEnemies();
-                    this.isTransitioningLevel = false; // Reset transition flag
-                }
-            }, 3000);
-        } else {
-            this.victory();
-        }
+            // Make sure we're still playing
+            if (this.state.gameState === GameState.PLAYING) {
+                this.initEnemies();
+                this.isTransitioningLevel = false; // Reset transition flag
+            }
+        }, 3000);
     }
 
     victory() {
+        // Cancel any pending level transition
+        this.isTransitioningLevel = false;
+        
         this.state.gameState = GameState.GAME_OVER;
+        
+        // Clear any level transition messages
+        const existingMessages = document.querySelectorAll('.level-message');
+        existingMessages.forEach(msg => msg.remove());
         
         // Show victory screen
         this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
         this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
         
-        this.ctx.fillStyle = '#0f0';
+        this.ctx.fillStyle = '#0f0'; // Green text for victory
         this.ctx.font = '40px Arial';
         this.ctx.textAlign = 'center';
         this.ctx.fillText('VICTORY!', GAME_CONFIG.width/2, GAME_CONFIG.height/3);
@@ -799,6 +816,10 @@ class Game {
         this.ctx.fillText(`Final Score: ${this.state.score}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2);
         this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
         
+        // Add a celebratory effect - create multiple explosions
+        this.createVictoryExplosions();
+        
+        // Stop the game loop
         this.stop();
         
         // Setup event listener for restart
@@ -811,69 +832,32 @@ class Game {
         
         window.addEventListener('keydown', restartHandler);
     }
-
-    initEnemies() {
-        // Add safety check to prevent accessing non-existent levels
-        if (this.state.level < 1 || this.state.level > GAME_CONFIG.levels.length) {
-            console.error(`Invalid level index: ${this.state.level}`);
-            // Default to first level if the requested level doesn't exist
-            this.state.level = Math.min(Math.max(1, this.state.level), GAME_CONFIG.levels.length);
-        }
-
-        const currentLevel = GAME_CONFIG.levels[this.state.level - 1];
-        const rows = currentLevel.enemyRows;
-        const cols = 8;
+    
+    // Add a celebratory effect for victory
+    createVictoryExplosions() {
+        // Create multiple colorful explosions at random positions
+        const colors = ['#0f0', '#00f', '#f0f', '#ff0', '#0ff'];
         
-        // Clear any existing enemies (just in case)
-        [...this.entities].forEach(entity => {
-            if (entity instanceof Enemy) {
-                this.entities.delete(entity);
-            }
-        });
-        
-        // Add new enemies
-        for (let i = 0; i < rows; i++) {
-            for (let j = 0; j < cols; j++) {
-                const enemy = new Enemy(
-                    j * (ENEMY_WIDTH + 20) + 50,
-                    i * (ENEMY_HEIGHT + 20) + 50,
-                    currentLevel.enemyType
+        const createRandomExplosion = (index) => {
+            setTimeout(() => {
+                const x = Math.random() * GAME_CONFIG.width;
+                const y = Math.random() * (GAME_CONFIG.height * 0.7);
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x, y, color,
+                        size: 20 + Math.random() * 40
+                    })
                 );
                 
-                // Use current level speed
-                enemy.speed = currentLevel.enemySpeed;
-                
-                this.entities.add(enemy);
-            }
-        }
+                if (index < 20) { // Create 20 explosions
+                    createRandomExplosion(index + 1);
+                }
+            }, 200 + Math.random() * 300); // Random delay between explosions
+        };
         
-        console.log(`Level ${this.state.level} initialized with ${rows * cols} enemies`);
-    }
-
-    updateScore() {
-        document.getElementById('score').textContent = `Score: ${this.state.score}`;
-    }
-    
-    // Create a reusable bullet to reduce object creation
-    createBullet(x, y, isEnemy = false) {
-        // Check bullet pool first
-        let bullet;
-        if (this.bulletPool.length > 0) {
-            bullet = this.bulletPool.pop();
-            bullet.x = x;
-            bullet.y = y;
-            bullet.speed = isEnemy ? -7 : 7;
-        } else {
-            bullet = new Bullet(x, y);
-            if (isEnemy) bullet.speed = -bullet.speed;
-        }
-        return bullet;
-    }
-    
-    // Return bullet to pool when no longer needed
-    recycleBullet(bullet) {
-        // Reset bullet state
-        this.bulletPool.push(bullet);
+        createRandomExplosion(0);
     }
 
     // Optimize handling of game events
@@ -931,6 +915,10 @@ class Game {
                 
             case 'levelComplete':
                 this.nextLevel();
+                break;
+                
+            case 'gameVictory':
+                this.victory();
                 break;
         }
     }
