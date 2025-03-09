@@ -13,6 +13,19 @@ const ENEMY_HEIGHT = 30;
 const BULLET_WIDTH = 3;
 const BULLET_HEIGHT = 15;
 
+let score = 0;
+let lives = 3;
+let touchX = null;
+
+// Update canvas size based on window
+function resizeCanvas() {
+    const container = document.getElementById('game-container');
+    const scale = Math.min(window.innerWidth / 800, window.innerHeight / 600);
+    canvas.width = 800 * scale;
+    canvas.height = 600 * scale;
+    ctx.scale(scale, scale);
+}
+
 class Player {
     constructor() {
         this.width = PLAYER_WIDTH;
@@ -21,11 +34,19 @@ class Player {
         this.y = canvas.height - this.height - 10;
         this.speed = 5;
         this.bullets = [];
+        this.lastShot = 0;
+        this.shootDelay = 250; // Minimum time between shots
     }
 
     draw() {
         ctx.fillStyle = '#0f0';
-        ctx.fillRect(this.x, this.y, this.width, this.height);
+        // Draw player ship as triangle
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width / 2, this.y);
+        ctx.lineTo(this.x, this.y + this.height);
+        ctx.lineTo(this.x + this.width, this.y + this.height);
+        ctx.closePath();
+        ctx.fill();
         this.bullets.forEach(bullet => bullet.draw());
     }
 
@@ -34,7 +55,12 @@ class Player {
     }
 
     shoot() {
-        this.bullets.push(new Bullet(this.x + this.width / 2, this.y));
+        const now = Date.now();
+        if (now - this.lastShot >= this.shootDelay) {
+            this.bullets.push(new Bullet(this.x + this.width / 2, this.y));
+            this.lastShot = now;
+            document.getElementById('shootSound').cloneNode().play();
+        }
     }
 
     update() {
@@ -52,15 +78,32 @@ class Enemy {
         this.width = ENEMY_WIDTH;
         this.height = ENEMY_HEIGHT;
         this.speed = 1;
+        this.bullets = [];
+        this.lastShot = 0;
     }
 
     draw() {
         ctx.fillStyle = '#f00';
-        ctx.fillRect(this.x, this.y, this.width, this.height);
+        // Draw enemy as invader-like shape
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y + this.height / 2);
+        ctx.lineTo(this.x + this.width / 4, this.y);
+        ctx.lineTo(this.x + this.width * 3/4, this.y);
+        ctx.lineTo(this.x + this.width, this.y + this.height / 2);
+        ctx.lineTo(this.x + this.width * 3/4, this.y + this.height);
+        ctx.lineTo(this.x + this.width / 4, this.y + this.height);
+        ctx.closePath();
+        ctx.fill();
     }
 
     move(direction) {
         this.x += direction * this.speed;
+    }
+
+    shoot() {
+        if (Math.random() < 0.001) {
+            this.bullets.push(new Bullet(this.x + this.width / 2, this.y + this.height));
+        }
     }
 }
 
@@ -105,6 +148,23 @@ function checkCollisions() {
                 bullet.y + bullet.height > enemy.y) {
                 player.bullets.splice(bulletIndex, 1);
                 enemies.splice(enemyIndex, 1);
+                score += 10;
+            }
+        });
+    });
+
+    enemies.forEach(enemy => {
+        enemy.bullets.forEach((bullet, bulletIndex) => {
+            if (bullet.x < player.x + player.width &&
+                bullet.x + bullet.width > player.x &&
+                bullet.y < player.y + player.height &&
+                bullet.y > player.y) {
+                enemy.bullets.splice(bulletIndex, 1);
+                lives--;
+                if (lives <= 0) {
+                    alert('Game Over! Final Score: ' + score);
+                    cancelAnimationFrame(gameLoop);
+                }
             }
         });
     });
@@ -145,6 +205,9 @@ function update() {
         return;
     }
 
+    document.getElementById('score').textContent = `Score: ${score}`;
+    document.getElementById('lives').textContent = `Lives: ${lives}`;
+
     gameLoop = requestAnimationFrame(update);
 }
 
@@ -159,6 +222,31 @@ document.addEventListener('keydown', (e) => {
 document.getElementById('leftBtn').addEventListener('touchstart', () => player.move(-1));
 document.getElementById('rightBtn').addEventListener('touchstart', () => player.move(1));
 document.getElementById('fireBtn').addEventListener('touchstart', () => player.shoot());
+
+// Touch controls
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    touchX = e.touches[0].clientX;
+});
+
+canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (touchX === null) return;
+    
+    const currentX = e.touches[0].clientX;
+    const deltaX = currentX - touchX;
+    player.move(Math.sign(deltaX));
+    touchX = currentX;
+});
+
+canvas.addEventListener('touchend', () => {
+    touchX = null;
+    player.shoot();
+});
+
+// Initialize
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
 
 // Start game
 initEnemies();

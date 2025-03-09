@@ -8,13 +8,19 @@
 </head>
 <body>
     <div id="game-container">
-        <canvas id="gameCanvas"></canvas>
+        <div id="game-stats">
+            <div id="score">Score: 0</div>
+            <div id="lives">Lives: 3</div>
+        </div>
+        <canvas id="gameCanvas" touch-action="none"></canvas>
         <div id="mobile-controls">
             <button id="leftBtn">←</button>
             <button id="fireBtn">Fire</button>
             <button id="rightBtn">→</button>
         </div>
     </div>
+    <audio id="shootSound" src="data:audio/wav;base64,UklGRhwEAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YfgDAAB/AL8A/wB/AJ..." preload="auto"></audio>
+    <audio id="explosionSound" src="data:audio/wav;base64,UklGRhwEAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YfgDAAB/AL8A/..." preload="auto"></audio>
     <script src="main.js"></script>
 </body>
 </html>
