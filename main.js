@@ -99,6 +99,7 @@ class Game {
         this.bindEvents();
         this.player = new Player();
         this.entities = new Set();
+        this.entities.add(this.player); // Add player to entities
         this.initEnemies();
     }
 
@@ -196,7 +197,12 @@ class Game {
     render() {
         this.ctx.fillStyle = '#000';
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        this.entities.forEach(entity => entity.draw(this.ctx));
+        this.player.draw(this.ctx); // Draw player explicitly
+        this.entities.forEach(entity => {
+            if (!(entity instanceof Player)) { // Don't draw player twice
+                entity.draw(this.ctx);
+            }
+        });
     }
 
     gameLoop(timestamp) {
@@ -410,6 +416,15 @@ class Enemy {
             this.bullets.push(new Bullet(this.x + this.width / 2, this.y + this.height));
         }
     }
+
+    update(deltaTime) {
+        // Add enemy update logic
+        this.bullets = this.bullets.filter(bullet => {
+            bullet.update(deltaTime);
+            return bullet.y < GAME_CONFIG.height;
+        });
+        this.shoot();
+    }
 }
 
 class Bullet {
@@ -436,7 +451,7 @@ class Bullet {
     }
 
     update(deltaTime) {
-        this.y -= this.speed;
+        this.y -= this.speed * (deltaTime / 16); // Make speed frame-rate independent
     }
 }
 
