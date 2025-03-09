@@ -315,6 +315,7 @@ class Explosion {
     }
 }
 
+// Fix and add missing methods to Game class
 class Game {
     constructor() {
         this.canvas = document.getElementById('gameCanvas');
@@ -578,17 +579,26 @@ class Game {
         const enemies = [...this.entities].filter(e => e instanceof Enemy);
         
         // Early return if no enemies or bullets
-        if (enemies.length === 0 || playerBullets.length === 0) {
-            if (enemies.length === 0) {
-                this.handleGameEvent('levelComplete');
-            }
+        if (enemies.length === 0) {
+            this.handleGameEvent('levelComplete');
             return;
         }
         
         // Player bullets hitting enemies
         for (let i = playerBullets.length - 1; i >= 0; i--) {
+            if (i >= playerBullets.length) continue; // Safety check
             const bullet = playerBullets[i];
             
+            // Check player bullets hitting bonus ship
+            if (this.bonusShip && this.checkCollision(bullet, this.bonusShip)) {
+                this.bonusShip.hit();
+                this.bulletPool.release(playerBullets[i]);
+                playerBullets.splice(i, 1);
+                continue;
+            }
+            
+            // Check player bullets hitting enemies
+            let hitEnemy = false;
             for (let j = enemies.length - 1; j >= 0; j--) {
                 const enemy = enemies[j];
                 
@@ -599,24 +609,62 @@ class Game {
                         y: enemy.y + enemy.height/2
                     });
                     
-                    // Return bullet to pool instead of just removing it
                     this.bulletPool.release(playerBullets[i]);
                     playerBullets.splice(i, 1);
+                    hitEnemy = true;
                     break;
                 }
             }
+            
+            // Skip further checks if we already hit an enemy
+            if (hitEnemy) continue;
+            
+            // Check for bullets hitting enemy bullets (bullet defense)
+            let bulletHit = false;
+            enemyLoop: for (const enemy of enemies) {
+                for (let j = enemy.bullets.length - 1; j >= 0; j--) {
+                    const enemyBullet = enemy.bullets[j];
+                    
+                    if (this.checkBulletCollision(bullet, enemyBullet)) {
+                        // Create small explosion where bullets collided
+                        this.explosions.push(
+                            this.explosionPool.get({
+                                x: (bullet.x + enemyBullet.x) / 2,
+                                y: (bullet.y + enemyBullet.y) / 2,
+                                color: '#fff',
+                                size: 15
+                            })
+                        );
+                        
+                        // Play sound effect
+                        this.soundManager.playBulletCollision();
+                        
+                        // Remove both bullets
+                        this.bulletPool.release(playerBullets[i]);
+                        playerBullets.splice(i, 1);
+                        this.bulletPool.release(enemyBullet);
+                        enemy.bullets.splice(j, 1);
+                        
+                        bulletHit = true;
+                        break enemyLoop;
+                    }
+                }
+            }
+            
+            if (bulletHit) continue;
         }
         
-        // Enemy bullets hitting player - only if player is not invulnerable
-        if (!this.playerInvulnerable) {
+        // Enemy bullets hitting player - only if player is not invulnerable or shield active
+        if (!this.playerInvulnerable && 
+            !(this.player.hasBonus && this.player.bonusType === BonusType.BULLET_SHIELD)) {
             for (const enemy of enemies) {
                 for (let i = enemy.bullets.length - 1; i >= 0; i--) {
                     const bullet = enemy.bullets[i];
                     
                     if (this.checkCollision(bullet, this.player)) {
                         // Return bullet to pool
-                        enemy.bullets.splice(i, 1);
                         this.bulletPool.release(bullet);
+                        enemy.bullets.splice(i, 1);
                         
                         this.handleGameEvent('playerHit', {
                             x: bullet.x, 
@@ -627,87 +675,25 @@ class Game {
                 }
             }
         }
-
-        // Check for player bullets hitting bonus ship
-        if (this.bonusShip && playerBullets.length > 0) {
-            for (let i = playerBullets.length - 1; i >= 0; i--) {
-                const bullet = playerBullets[i];
-                if (this.checkCollision(bullet, this.bonusShip)) {
-                    this.bonusShip.hit();
-                    playerBullets.splice(i, 1);
-                    break;
-                }
-            }
-        }
-        
-        // Check for bullets hitting enemy bullets (new feature!)
-        for (let i = playerBullets.length - 1; i >= 0; i--) {
-            const playerBullet = playerBullets[i];
-            let bulletHit = false;
-            
-            // Check against all enemy bullets
-            for (const enemy of enemies) {
-                for (let j = enemy.bullets.length - 1; j >= 0; j--) {
-                    const enemyBullet = enemy.bullets[j];
-                    
-                    // Check if player bullet hits enemy bullet
-                    if (this.checkBulletCollision(playerBullet, enemyBullet)) {
-                        // Create small explosion where bullets collided
-                        this.explosions.push(
-                            this.explosionPool.get({
-        this.ctx.fillStyle = '#fff';
-        this.ctx.font = '40px Arial';
-        this.ctx.textAlign = 'center';
-        this.ctx.fillText('SPACE INVADERS', GAME_CONFIG.width/2, GAME_CONFIG.height/3);
-        
-        this.ctx.font = '20px Arial';
-        this.ctx.fillText('Press ENTER to start', GAME_CONFIG.width/2, GAME_CONFIG.height/2);
-        
-        this.ctx.font = '16px Arial';
-        this.ctx.fillText('Controls: Arrows to move, Space to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
-        this.ctx.fillText('P to pause, M to mute', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.65);
-        
-        // Draw a small player ship for visual appeal
-        this.ctx.save();
-        this.ctx.translate(GAME_CONFIG.width/2, GAME_CONFIG.height * 0.8);
-        this.ctx.fillStyle = '#0f0';
-        this.ctx.beginPath();
-        this.ctx.moveTo(0, -15);
-        this.ctx.lineTo(25, 15);
-        this.ctx.lineTo(-25, 15);
-        this.ctx.closePath();
-        this.ctx.fill();
-        this.ctx.restore();
-    }
-    
-    renderPauseScreen() {
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
-        
-        this.ctx.fillStyle = '#fff';
-        this.ctx.font = '40px Arial';
-        this.ctx.textAlign = 'center';
-        this.ctx.fillText('PAUSED', GAME_CONFIG.width/2, GAME_CONFIG.height/2);
-        
-        this.ctx.font = '20px Arial';
-        this.ctx.fillText('Press P to resume', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
     }
 
-    gameLoop(timestamp) {
-        if (!this.state.isRunning) return;
+    checkCollision(obj1, obj2) {
+        return obj1.x < obj2.x + obj2.width &&
+               obj1.x + obj1.width > obj2.x &&
+               obj1.y < obj2.y + obj2.height &&
+               obj1.y + obj1.height > obj2.y;
+    }
 
-        const deltaTime = timestamp - this.lastTime;
-        this.lastTime = timestamp;
-
-        this.accumulator += deltaTime;
+    checkBulletCollision(bullet1, bullet2) {
+        // Check for collision between two bullets using distance calculation
+        // This is more accurate for round enemy bullets
+        const dx = bullet1.x - bullet2.x;
+        const dy = bullet1.y - bullet2.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
         
-        while (this.accumulator >= this.timeStep) {
-            this.update(this.timeStep);
-            this.accumulator -= this.timeStep;
-        }
-
-        this.render();
-        requestAnimationFrame(this.gameLoop.bind(this));
+        // Use combined radius as collision threshold
+        const collisionRadius = bullet1.width + bullet2.width * 2;
+        return distance < collisionRadius;
     }
 
     updateFPS(deltaTime) {
@@ -754,9 +740,21 @@ class Game {
     }
 
     nextLevel() {
+        // Award extra life when a level is completed
+        this.awardExtraLife();
+        
         this.state.level++;
         if (this.state.level <= this.state.maxLevel) {
-            this.initEnemies();
+            // Clear all enemy bullets between levels
+            this.entities.forEach(entity => {
+                if (entity instanceof Enemy) {
+                    entity.bullets.forEach(bullet => this.bulletPool.release(bullet));
+                    entity.bullets = [];
+                }
+            });
+            
+            // Initialize next level
+            setTimeout(() => this.initEnemies(), 2000);
         } else {
             this.victory();
         }
@@ -894,8 +892,252 @@ class Game {
                 break;
         }
     }
+
+    updateBonusShip(deltaTime) {
+        // Update existing bonus ship if present
+        if (this.bonusShip) {
+            if (!this.bonusShip.update(deltaTime)) {
+                this.bonusShip = null;
+            }
+            return;
+        }
+
+        // Random chance to spawn a bonus ship
+        if (Math.random() < GAME_CONFIG.bonusShipChance && this.state.gameState === GameState.PLAYING) {
+            this.bonusShip = new BonusShip();
+            this.soundManager.playBonusShip();
+        }
+    }
+
+    awardExtraLife() {
+        this.state.lives++;
+        this.updateLives();
+        
+        // Display a message
+        const messageEl = document.createElement('div');
+        messageEl.className = 'level-message';
+        messageEl.innerHTML = `LEVEL ${this.state.level} COMPLETE!<br>+1 LIFE`;
+        document.getElementById('game-container').appendChild(messageEl);
+        
+        // Remove after animation
+        setTimeout(() => {
+            messageEl.classList.add('fade-out');
+            setTimeout(() => messageEl.remove(), 1000);
+        }, 2000);
+    }
+
+    render() {
+        // Clear the canvas
+        this.ctx.fillStyle = '#000';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        // Draw background
+        this.drawBackground();
+        
+        if (this.state.gameState === GameState.MENU) {
+            this.renderMenu();
+            return;
+        }
+        
+        if (this.state.gameState === GameState.PAUSED) {
+            this.renderPauseScreen();
+            return;
+        }
+        
+        // Draw player with blinking effect when invulnerable
+        if (!this.playerInvulnerable || Math.floor(Date.now() / 100) % 2) {
+            this.player.draw(this.ctx);
+        }
+        
+        // Draw entities (enemies and their bullets)
+        this.entities.forEach(entity => {
+            if (entity instanceof Enemy) {
+                entity.draw(this.ctx);
+                // Draw enemy bullets
+                entity.bullets.forEach(bullet => bullet.draw(this.ctx));
+            }
+        });
+        
+        // Draw bonus ship if active
+        if (this.bonusShip) {
+            this.bonusShip.draw(this.ctx);
+        }
+
+        // Draw explosions over everything else
+        this.explosions.forEach(explosion => explosion.draw(this.ctx));
+    }
+
+    gameLoop(timestamp) {
+        if (!this.state.isRunning) return;
+
+        const deltaTime = timestamp - this.lastTime;
+        this.lastTime = timestamp;
+
+        this.accumulator += deltaTime;
+        
+        while (this.accumulator >= this.timeStep) {
+            this.update(this.timeStep);
+            this.accumulator -= this.timeStep;
+        }
+
+        this.render();
+        requestAnimationFrame(this.gameLoop.bind(this));
+    }
+
+    renderMenu() {
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '40px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('SPACE INVADERS', GAME_CONFIG.width/2, GAME_CONFIG.height/3);
+        
+        this.ctx.font = '20px Arial';
+        this.ctx.fillText('Press ENTER to start', GAME_CONFIG.width/2, GAME_CONFIG.height/2);
+        
+        this.ctx.font = '16px Arial';
+        this.ctx.fillText('Controls: Arrows to move, Space to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+        this.ctx.fillText('P to pause, M to mute', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.65);
+        
+        // Draw a small player ship for visual appeal
+        this.ctx.save();
+        this.ctx.translate(GAME_CONFIG.width/2, GAME_CONFIG.height * 0.8);
+        this.ctx.fillStyle = '#0f0';
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, -15);
+        this.ctx.lineTo(25, 15);
+        this.ctx.lineTo(-25, 15);
+        this.ctx.closePath();
+        this.ctx.fill();
+        this.ctx.restore();
+    }
+    
+    renderPauseScreen() {
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+        
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '40px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('PAUSED', GAME_CONFIG.width/2, GAME_CONFIG.height/2);
+        
+        this.ctx.font = '20px Arial';
+        this.ctx.fillText('Press P to resume', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+    }
 }
 
+// Add the BonusShip class
+class BonusShip {
+    constructor() {
+        this.width = BONUS_SHIP_WIDTH;
+        this.height = BONUS_SHIP_HEIGHT;
+        // Randomize direction
+        this.direction = Math.random() > 0.5 ? 1 : -1;
+        // Start off-screen
+        this.x = this.direction > 0 ? -this.width : GAME_CONFIG.width;
+        // Random height in top area of screen
+        this.y = 30 + Math.random() * 80;
+        // Random speed
+        this.speed = 2 + Math.random() * 2;
+        // Random bonus type
+        this.bonusType = this._getRandomBonusType();
+        this.active = true;
+    }
+    
+    _getRandomBonusType() {
+        const types = Object.values(BonusType);
+        return types[Math.floor(Math.random() * types.length)];
+    }
+    
+    draw(ctx) {
+        // Get color based on bonus type
+        let color;
+        switch (this.bonusType) {
+            case BonusType.RAPID_FIRE:
+                color = '#ff0'; // Yellow
+                break;
+            case BonusType.MULTI_SHOT:
+                color = '#f0f'; // Purple
+                break;
+            case BonusType.BULLET_SHIELD:
+                color = '#0ff'; // Cyan
+                break;
+            default:
+                color = '#fff';
+        }
+        
+        // Draw bonus ship
+        ctx.fillStyle = color;
+        
+        // Draw saucer body
+        ctx.beginPath();
+        ctx.ellipse(
+            this.x + this.width/2, 
+            this.y + this.height*0.6, 
+            this.width*0.5, 
+            this.height*0.3, 
+            0, 0, Math.PI * 2
+        );
+        ctx.fill();
+        
+        // Draw dome
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(
+            this.x + this.width/2, 
+            this.y + this.height*0.3, 
+            this.width*0.3, 
+            Math.PI, 0
+        );
+        ctx.fill();
+        
+        // Draw lights that blink
+        if (Math.floor(Date.now() / 200) % 2) {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            
+            // Three blinking lights under the ship
+            for (let i = 0; i < 3; i++) {
+                ctx.rect(
+                    this.x + this.width * (0.25 + i * 0.25) - 5,
+                    this.y + this.height * 0.8,
+                    10,
+                    5
+                );
+            }
+            ctx.fill();
+        }
+    }
+    
+    update(deltaTime) {
+        // Calculate movement based on deltaTime for consistent speed
+        const multiplier = window.gameInstance.deltaMultiplier;
+        this.x += this.direction * this.speed * multiplier;
+        
+        // Check if ship has left the screen
+        if ((this.direction > 0 && this.x > GAME_CONFIG.width) || 
+            (this.direction < 0 && this.x < -this.width)) {
+            this.active = false;
+        }
+        
+        return this.active;
+    }
+    
+    hit() {
+        // When hit by player, apply bonus and create explosion
+        window.gameInstance.player.applyBonus(this.bonusType);
+        window.gameInstance.explosions.push(
+            window.gameInstance.explosionPool.get({
+                x: this.x + this.width/2,
+                y: this.y + this.height/2,
+                color: '#fff',
+                size: 40
+            })
+        );
+        window.gameInstance.soundManager.playPowerupCollect();
+        this.active = false;
+    }
+}
+
+// Enhance Player class with bonus functionality
 class Player {
     constructor() {
         this.width = PLAYER_WIDTH;
@@ -906,10 +1148,18 @@ class Player {
         this.bullets = [];
         this.lastShot = 0;
         this.shootDelay = 250; // Minimum time between shots
+        
+        // Add bonus properties
+        this.hasBonus = false;
+        this.bonusType = null;
+        this.bonusEndTime = 0;
     }
-
+    
     draw(ctx) {
-        ctx.fillStyle = '#0f0';
+        // Change ship color based on active bonus
+        ctx.fillStyle = this.hasBonus ? this._getBonusColor() : '#0f0';
+        
+        // ...existing drawing code...
         ctx.beginPath();
         // Draw spaceship body
         ctx.moveTo(this.x + this.width / 2, this.y);
@@ -927,28 +1177,122 @@ class Player {
         ctx.beginPath();
         ctx.arc(this.x + this.width / 2, this.y + this.height * 0.4, this.width * 0.15, 0, Math.PI * 2);
         ctx.fill();
+        
+        // Draw shield if bullet shield bonus is active
+        if (this.hasBonus && this.bonusType === BonusType.BULLET_SHIELD) {
+            ctx.strokeStyle = '#0ff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(this.x + this.width/2, this.y + this.height/2, this.width * 0.8, 0, Math.PI * 2);
+            ctx.stroke();
+        }
 
+        // Draw bullets
         this.bullets.forEach(bullet => bullet.draw(ctx));
     }
-
+    
+    _getBonusColor() {
+        switch (this.bonusType) {
+            case BonusType.RAPID_FIRE:
+                return '#ff0'; // Yellow for rapid fire
+            case BonusType.MULTI_SHOT:
+                return '#f0f'; // Purple for multi-shot
+            case BonusType.BULLET_SHIELD:
+                return '#0ff'; // Cyan for bullet shield
+            default:
+                return '#0f0';
+        }
+    }
+    
     move(direction) {
         this.x = Math.max(0, Math.min(GAME_CONFIG.width - this.width, this.x + direction * this.speed));
     }
 
     shoot() {
         const now = Date.now();
-        if (now - this.lastShot >= this.shootDelay) {
-            this.bullets.push(new Bullet(this.x + this.width / 2, this.y));
+        // Get current shoot delay (reduced if rapid fire bonus is active)
+        const currentDelay = this.hasBonus && this.bonusType === BonusType.RAPID_FIRE ? 
+                           this.shootDelay / 3 : this.shootDelay;
+        
+        if (now - this.lastShot >= currentDelay) {
+            // Normal shot or multi-shot based on bonus
+            if (this.hasBonus && this.bonusType === BonusType.MULTI_SHOT) {
+                // Create 3 bullets for multi-shot
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + this.width / 2, 
+                    y: this.y
+                }));
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + this.width / 4, 
+                    y: this.y + this.height / 3
+                }));
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + 3 * this.width / 4, 
+                    y: this.y + this.height / 3
+                }));
+            } else {
+                // Normal single shot
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + this.width / 2, 
+                    y: this.y
+                }));
+            }
+            
             this.lastShot = now;
-            // Fix circular reference by using window.gameInstance
             window.gameInstance.soundManager.playShoot();
         }
     }
-
+    
+    applyBonus(type) {
+        this.hasBonus = true;
+        this.bonusType = type;
+        this.bonusEndTime = Date.now() + GAME_CONFIG.bonusDuration;
+        
+        // Show message for bonus
+        this._showBonusMessage();
+    }
+    
+    _showBonusMessage() {
+        let message;
+        switch (this.bonusType) {
+            case BonusType.RAPID_FIRE:
+                message = "RAPID FIRE!";
+                break;
+            case BonusType.MULTI_SHOT:
+                message = "MULTI-SHOT!";
+                break;
+            case BonusType.BULLET_SHIELD:
+                message = "BULLET SHIELD!";
+                break;
+        }
+        
+        const messageEl = document.createElement('div');
+        messageEl.className = 'bonus-message';
+        messageEl.textContent = message;
+        document.getElementById('game-container').appendChild(messageEl);
+        
+        setTimeout(() => {
+            messageEl.classList.add('fade-out');
+            setTimeout(() => messageEl.remove(), 1000);
+        }, 2000);
+    }
+    
     update(deltaTime) {
+        // Check if bonus has expired
+        if (this.hasBonus && Date.now() > this.bonusEndTime) {
+            this.hasBonus = false;
+            this.bonusType = null;
+        }
+        
+        // Update bullets with efficient memory management
         this.bullets = this.bullets.filter(bullet => {
             bullet.update(deltaTime);
-            return bullet.y > 0;
+            
+            if (bullet.y <= 0) {
+                window.gameInstance.bulletPool.release(bullet);
+                return false;
+            }
+            return true;
         });
     }
 }
