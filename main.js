@@ -375,6 +375,9 @@ class Game {
         this.bonusShip = null;
         this.bonusShipTimer = 0;
 
+        // Add a flag to track level transitions
+        this.isTransitioningLevel = false;
+
         this.init();
     }
 
@@ -579,7 +582,8 @@ class Game {
         const enemies = [...this.entities].filter(e => e instanceof Enemy);
         
         // Early return if no enemies or bullets
-        if (enemies.length === 0) {
+        if (enemies.length === 0 && !this.isTransitioningLevel) {
+            this.isTransitioningLevel = true;  // Set flag to prevent multiple calls
             this.handleGameEvent('levelComplete');
             return;
         }
@@ -744,6 +748,13 @@ class Game {
         this.awardExtraLife();
         
         this.state.level++;
+        
+        // Show a level transition message
+        const levelMessage = document.createElement('div');
+        levelMessage.className = 'level-message';
+        levelMessage.innerHTML = `PREPARE FOR LEVEL ${this.state.level}`;
+        document.getElementById('game-container').appendChild(levelMessage);
+        
         if (this.state.level <= this.state.maxLevel) {
             // Clear all enemy bullets between levels
             this.entities.forEach(entity => {
@@ -753,13 +764,18 @@ class Game {
                 }
             });
             
-            // Fix the setTimeout context issue by binding this
+            // Initialize next level after a delay
             setTimeout(() => {
-                // Double-check we're still in a valid state when the timeout executes
+                // Remove the level message
+                levelMessage.classList.add('fade-out');
+                setTimeout(() => levelMessage.remove(), 1000);
+                
+                // Make sure we're still playing
                 if (this.state.gameState === GameState.PLAYING) {
                     this.initEnemies();
+                    this.isTransitioningLevel = false; // Reset transition flag
                 }
-            }, 2000);
+            }, 3000);
         } else {
             this.victory();
         }
@@ -808,6 +824,14 @@ class Game {
         const rows = currentLevel.enemyRows;
         const cols = 8;
         
+        // Clear any existing enemies (just in case)
+        [...this.entities].forEach(entity => {
+            if (entity instanceof Enemy) {
+                this.entities.delete(entity);
+            }
+        });
+        
+        // Add new enemies
         for (let i = 0; i < rows; i++) {
             for (let j = 0; j < cols; j++) {
                 const enemy = new Enemy(
@@ -815,9 +839,15 @@ class Game {
                     i * (ENEMY_HEIGHT + 20) + 50,
                     currentLevel.enemyType
                 );
+                
+                // Use current level speed
+                enemy.speed = currentLevel.enemySpeed;
+                
                 this.entities.add(enemy);
             }
         }
+        
+        console.log(`Level ${this.state.level} initialized with ${rows * cols} enemies`);
     }
 
     updateScore() {
@@ -1090,6 +1120,43 @@ class Game {
     drawBackground() {
         // Simply copy the pre-rendered background
         this.ctx.drawImage(this.offscreenCanvas, 0, 0);
+    }
+
+    gameOver(reason = "Game Over") {
+        // Cancel any pending level transition
+        this.isTransitioningLevel = false;
+        
+        this.state.gameState = GameState.GAME_OVER;
+        
+        // Clear any level transition messages
+        const existingMessages = document.querySelectorAll('.level-message');
+        existingMessages.forEach(msg => msg.remove());
+        
+        // Show game over screen
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+        
+        this.ctx.fillStyle = '#f00';
+        this.ctx.font = '40px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText(reason, GAME_CONFIG.width/2, GAME_CONFIG.height/3);
+        
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '20px Arial';
+        this.ctx.fillText(`Final Score: ${this.state.score}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2);
+        this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+        
+        this.stop();
+        
+        // Setup event listener for restart
+        const restartHandler = (e) => {
+            if (e.key === 'Enter') {
+                window.removeEventListener('keydown', restartHandler);
+                this.startGame();
+            }
+        };
+        
+        window.addEventListener('keydown', restartHandler);
     }
 }
 
