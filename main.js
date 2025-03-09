@@ -394,6 +394,7 @@ class Game {
         // Prevent zombie intervals/timeouts
         this.activeTimeouts = new Set();
 
+        // Initialize the game but defer enemy creation until after method definitions
         this.init();
     }
 
@@ -403,9 +404,53 @@ class Game {
         this.player = new Player();
         this.entities = new Set();
         this.entities.add(this.player); // Add player to entities
-        this.initEnemies();
         this.prepareBackgroundStars();
         this.bindKeys();
+        
+        // Important: Call this after all methods are defined
+        this.createInitialEnemies();
+    }
+
+    // Add this method to safely call initEnemies after all methods are defined
+    createInitialEnemies() {
+        // This ensures we don't try to call methods that aren't defined yet
+        setTimeout(() => this.initEnemies(), 0);
+    }
+
+    initEnemies() {
+        // Add safety check to prevent accessing non-existent levels
+        if (this.state.level < 1 || this.state.level > GAME_CONFIG.levels.length) {
+            console.error(`Invalid level index: ${this.state.level}`);
+            // Default to first level if the requested level doesn't exist
+            this.state.level = Math.min(Math.max(1, this.state.level), GAME_CONFIG.levels.length);
+        }
+
+        const currentLevel = GAME_CONFIG.levels[this.state.level - 1];
+        const rows = currentLevel.enemyRows;
+        const cols = 8;
+        
+        // Clear any existing enemies (just in case)
+        [...this.entities].forEach(entity => {
+            if (entity instanceof Enemy) {
+                this.entities.delete(entity);
+            }
+        });
+        
+        // Add new enemies
+        for (let i = 0; i < rows; i++) {
+            for (let j = 0; j < cols; j++) {
+                const enemy = new Enemy(
+                    j * (ENEMY_WIDTH + 20) + 50,
+                    i * (ENEMY_HEIGHT + 20) + 50,
+                    currentLevel.enemyType
+                );
+                
+                // Use current level speed
+                enemy.speed = currentLevel.enemySpeed;
+                
+                this.entities.add(enemy);
+            }
+        }
     }
 
     setupCanvas() {
