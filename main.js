@@ -406,9 +406,126 @@ class Game {
         this.entities.add(this.player); // Add player to entities
         this.prepareBackgroundStars();
         this.bindKeys();
+        this.bindTouchControls();
         
         // Important: Call this after all methods are defined
         this.createInitialEnemies();
+    }
+    
+    // Add touch controls bindings
+    bindTouchControls() {
+        // Mobile control buttons
+        const leftBtn = document.getElementById('left-button');
+        const rightBtn = document.getElementById('right-button');
+        const shootBtn = document.getElementById('shoot-button');
+        const startBtn = document.getElementById('start-button');
+        const muteBtn = document.getElementById('mute-button');
+        const restartBtn = document.getElementById('restart-button');
+        
+        // Set up touch event listeners with continuous movement
+        if (leftBtn && rightBtn && shootBtn) {
+            let moveInterval;
+            let direction = 0;
+            
+            // Left button: continuous movement while pressed
+            leftBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                this.initAudio();
+                direction = -1;
+                
+                // Clear any existing interval
+                clearInterval(moveInterval);
+                
+                // Move once immediately
+                if (this.state.gameState === GameState.PLAYING) {
+                    this.player.move(direction);
+                }
+                
+                // Then set up interval for continuous movement
+                moveInterval = setInterval(() => {
+                    if (this.state.gameState === GameState.PLAYING) {
+                        this.player.move(direction);
+                    }
+                }, 16);
+            });
+            
+            // Right button: continuous movement while pressed
+            rightBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                this.initAudio();
+                direction = 1;
+                
+                // Clear any existing interval
+                clearInterval(moveInterval);
+                
+                // Move once immediately
+                if (this.state.gameState === GameState.PLAYING) {
+                    this.player.move(direction);
+                }
+                
+                // Then set up interval for continuous movement
+                moveInterval = setInterval(() => {
+                    if (this.state.gameState === GameState.PLAYING) {
+                        this.player.move(direction);
+                    }
+                }, 16);
+            });
+            
+            // Stop movement when touch ends
+            const stopMoving = (e) => {
+                e.preventDefault();
+                clearInterval(moveInterval);
+            };
+            
+            leftBtn.addEventListener('touchend', stopMoving);
+            rightBtn.addEventListener('touchend', stopMoving);
+            leftBtn.addEventListener('touchcancel', stopMoving);
+            rightBtn.addEventListener('touchcancel', stopMoving);
+            
+            // Fire button
+            shootBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                this.initAudio();
+                if (this.state.gameState === GameState.PLAYING) {
+                    this.player.shoot();
+                }
+            });
+        }
+        
+        // Menu control buttons
+        if (startBtn) {
+            startBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                this.initAudio();
+                
+                if (this.state.gameState === GameState.MENU || this.state.gameState === GameState.GAME_OVER) {
+                    this.startGame();
+                    // Update UI for in-game
+                    startBtn.classList.add('hidden');
+                    restartBtn.classList.remove('hidden');
+                }
+            });
+        }
+        
+        if (muteBtn) {
+            muteBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                this.initAudio();
+                this.soundManager.toggleMute();
+                muteBtn.textContent = this.soundManager.isMuted ? "UNMUTE" : "MUTE";
+            });
+        }
+        
+        if (restartBtn) {
+            restartBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                this.initAudio();
+                
+                if (this.state.gameState === GameState.GAME_OVER) {
+                    this.startGame();
+                }
+            });
+        }
     }
 
     // Add this method to safely call initEnemies after all methods are defined
@@ -522,7 +639,12 @@ class Game {
 
     handleTouch(e) {
         e.preventDefault();
-        this.initAudio(); // Initialize audio on first touch
+        this.initAudio();
+        
+        // If we're using explicit touch controls, don't need this generic handler
+        if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
+            return;
+        }
         
         const rect = this.canvas.getBoundingClientRect();
         const touch = e.touches[0];
@@ -895,7 +1017,14 @@ class Game {
         this.ctx.font = '20px Arial';
         this.ctx.fillText(`You completed all ${this.state.maxLevel} levels!`, GAME_CONFIG.width/2, GAME_CONFIG.height*0.45);
         this.ctx.fillText(`Final Score: ${this.state.score}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2);
-        this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+        
+        // Show different restart instructions based on device
+        if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
+            document.getElementById('restart-button').classList.remove('hidden');
+            document.getElementById('start-button').classList.add('hidden');
+        } else {
+            this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+        }
         
         // Add a celebratory effect - create multiple explosions
         this.createVictoryExplosions();
@@ -1044,6 +1173,13 @@ class Game {
         document.getElementById('lives').textContent = `Lives: ${this.state.lives}`;
     }
 
+    /**
+     * Updates the score display in the DOM
+     */
+    updateScore() {
+        document.getElementById('score').textContent = `Score: ${this.state.score}`;
+    }
+
     render() {
         // Clear the canvas
         this.ctx.fillStyle = '#000';
@@ -1120,11 +1256,20 @@ class Game {
         this.ctx.fillText('SPACE INVADERS', GAME_CONFIG.width/2, GAME_CONFIG.height/3);
         
         this.ctx.font = '20px Arial';
-        this.ctx.fillText('Press ENTER to start', GAME_CONFIG.width/2, GAME_CONFIG.height/2);
         
-        this.ctx.font = '16px Arial';
-        this.ctx.fillText('Controls: Arrows to move, Space to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
-        this.ctx.fillText('P to pause, M to mute', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.65);
+        // Show different instructions based on device type
+        if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
+            this.ctx.fillText('Use on-screen controls to play', GAME_CONFIG.width/2, GAME_CONFIG.height/2);
+            
+            // Update menu controls visibility
+            document.getElementById('start-button').classList.remove('hidden');
+            document.getElementById('restart-button').classList.add('hidden');
+        } else {
+            this.ctx.fillText('Press ENTER to start', GAME_CONFIG.width/2, GAME_CONFIG.height/2);
+            this.ctx.font = '16px Arial';
+            this.ctx.fillText('Controls: Arrows to move, Space to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+            this.ctx.fillText('P to pause, M to mute', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.65);
+        }
         
         // Draw a small player ship for visual appeal
         this.ctx.save();
@@ -1224,7 +1369,14 @@ class Game {
         this.ctx.fillStyle = '#fff';
         this.ctx.font = '20px Arial';
         this.ctx.fillText(`Final Score: ${this.state.score}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2);
-        this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+        
+        // Show different restart instructions based on device
+        if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
+            document.getElementById('restart-button').classList.remove('hidden');
+            document.getElementById('start-button').classList.add('hidden');
+        } else {
+            this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+        }
         
         this.stop();
         
@@ -1753,6 +1905,17 @@ window.addEventListener('DOMContentLoaded', () => {
         
         ['click', 'touchstart', 'keydown'].forEach(event => {
             document.addEventListener(event, unlockAudio, { once: true });
+        });
+        
+        // Handle device orientation changes
+        window.addEventListener('orientationchange', () => {
+            setTimeout(() => {
+                game.setupCanvas();
+                // Force redraw
+                if (game.state.gameState === GameState.PLAYING) {
+                    game.render();
+                }
+            }, 200); // Small delay to ensure dimensions are updated
         });
         
         game.start();

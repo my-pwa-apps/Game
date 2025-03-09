@@ -112,3 +112,143 @@ button {
     from { opacity: 1; }
     to { opacity: 0; }
 }
+
+/* Improved mobile controls */
+#mobile-controls {
+    position: absolute;
+    bottom: 20px;
+    left: 0;
+    right: 0;
+    display: none;
+    justify-content: space-between;
+    padding: 0 20px;
+    width: calc(100% - 40px);
+    z-index: 10;
+}
+
+#menu-controls {
+    position: absolute;
+    bottom: 100px;
+    left: 0;
+    right: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+    z-index: 11;
+}
+
+.menu-button {
+    background: rgba(0, 255, 0, 0.3);
+    color: #fff;
+    border: 2px solid #0f0;
+    padding: 15px 30px;
+    font-size: 18px;
+    border-radius: 8px;
+    text-align: center;
+    min-width: 180px;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s;
+}
+
+.menu-button:active {
+    background: rgba(0, 255, 0, 0.6);
+}
+
+.control-button {
+    background: rgba(255, 255, 255, 0.2);
+    border: 2px solid #fff;
+    color: #fff;
+    padding: 20px;
+    font-size: 24px;
+    border-radius: 8px;
+    width: 60px;
+    height: 60px;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+#shoot-button {
+    width: 120px;
+    background: rgba(255, 0, 0, 0.3);
+    border-color: #f00;
+}
+
+.control-button:active {
+    background: rgba(255, 255, 255, 0.4);
+}
+
+#shoot-button:active {
+    background: rgba(255, 0, 0, 0.6);
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Show controls on touch devices and smaller screens */
+@media (max-width: 768px), (hover: none) {
+    #mobile-controls {
+        display: flex;
+    }
+    
+    #menu-controls {
+        display: flex;
+    }
+    
+    /* Make space for controls */
+    #gameCanvas {
+        max-height: calc(100vh - 120px);
+    }
+    
+    /* Adjust game stats position */
+    #game-stats {
+        top: 10px;
+        left: 10px;
+        font-size: 16px;
+    }
+}
+
+/* For extremely small screens */
+@media (max-width: 480px) {
+    .control-button {
+        padding: 15px;
+        width: 50px;
+        height: 50px;
+        font-size: 18px;
+    }
+    
+    #shoot-button {
+        width: 100px;
+    }
+}
+
+/* Fix for notched phones */
+@supports (padding: max(0px)) {
+    #mobile-controls {
+        padding-left: max(20px, env(safe-area-inset-left));
+        padding-right: max(20px, env(safe-area-inset-right));
+        padding-bottom: max(20px, env(safe-area-inset-bottom));
+    }
+}
+
+/* Error message styling */
+.error-message {
+    color: #f00;
+    font-size: 18px;
+    text-align: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.8);
+    border-radius: 8px;
+    margin: 20px;
+    max-width: 80%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}

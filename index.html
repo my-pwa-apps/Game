@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Space Invaders</title>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -14,6 +14,20 @@
             <div id="lives">Lives: 3</div>
         </div>
         <canvas id="gameCanvas" touch-action="none"></canvas>
+        
+        <!-- Add touch controls for mobile -->
+        <div id="mobile-controls">
+            <div id="left-button" class="control-button">◀</div>
+            <div id="shoot-button" class="control-button">FIRE</div>
+            <div id="right-button" class="control-button">▶</div>
+        </div>
+        
+        <!-- Add menu touch controls -->
+        <div id="menu-controls">
+            <div id="start-button" class="menu-button">START GAME</div>
+            <div id="mute-button" class="menu-button">MUTE</div>
+            <div id="restart-button" class="menu-button hidden">RESTART</div>
+        </div>
     </div>
     <script type="module" src="main.js"></script>
 </body>
