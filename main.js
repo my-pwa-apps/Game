@@ -76,6 +76,25 @@ class SoundManager {
         oscillator.stop(this.audioContext.currentTime + 0.2);
     }
 
+    playAlienMove() {
+        if (this.isMuted) return;
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.type = 'square';
+        oscillator.frequency.setValueAtTime(150 + Math.random() * 30, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(50, this.audioContext.currentTime + 0.1);
+        
+        gainNode.gain.setValueAtTime(0.05, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + 0.1);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.start();
+        oscillator.stop(this.audioContext.currentTime + 0.1);
+    }
+
     toggleMute() {
         this.isMuted = !this.isMuted;
     }
@@ -123,6 +142,10 @@ class Game {
         // Create object pools for bullets to reduce garbage collection
         this.bulletPool = [];
         
+        this.lastAlienSound = 0;
+        this.alienSoundInterval = 800; // ms between alien movement sounds
+        this.debug = false; // Set to true for debugging
+
         this.init();
     }
 
@@ -253,6 +276,13 @@ class Game {
             }
         }
         
+        // Play alien movement sound at intervals
+        const now = Date.now();
+        if (now - this.lastAlienSound > this.alienSoundInterval) {
+            this.soundManager.playAlienMove();
+            this.lastAlienSound = now;
+        }
+        
         // Change direction and move down if hit wall
         if (hitWall) {
             for (const enemy of enemies) {
@@ -261,7 +291,7 @@ class Game {
                 
                 // Check if enemy reached player level - game over
                 if (enemy.y + enemy.height >= this.player.y) {
-                    this.gameOver();
+                    this.gameOver("Aliens reached your ship!");
                     return;
                 }
             }
@@ -301,9 +331,10 @@ class Game {
                     enemy.bullets.splice(i, 1);
                     this.state.lives--;
                     this.updateLives();
+                    this.soundManager.playExplosion();
                     
                     if (this.state.lives <= 0) {
-                        this.gameOver();
+                        this.gameOver("You ran out of lives!");
                     }
                     break;
                 }
@@ -330,10 +361,10 @@ class Game {
         this.updateScore();
     }
     
-    gameOver() {
+    gameOver(reason = "Game Over") {
         this.state.gameState = GameState.GAME_OVER;
         
-        // Show game over screen instead of alert
+        // Show game over screen with reason
         this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
         this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
         
@@ -344,8 +375,13 @@ class Game {
         
         this.ctx.fillStyle = '#fff';
         this.ctx.font = '20px Arial';
+        this.ctx.fillText(`${reason}`, GAME_CONFIG.width/2, GAME_CONFIG.height*0.45);
         this.ctx.fillText(`Final Score: ${this.state.score}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2);
         this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+        
+        if (this.debug) {
+            console.log('Game ended: ' + reason);
+        }
         
         // Stop the game loop
         this.stop();
@@ -383,13 +419,15 @@ class Game {
             return;
         }
         
-        // Draw player
+        // Draw player first
         this.player.draw(this.ctx);
         
-        // Draw entities (enemies, bullets)
+        // Draw entities (enemies and their bullets)
         this.entities.forEach(entity => {
-            if (!(entity instanceof Player)) {
+            if (entity instanceof Enemy) {
                 entity.draw(this.ctx);
+                // Draw enemy bullets
+                entity.bullets.forEach(bullet => bullet.draw(this.ctx));
             }
         });
     }
@@ -639,6 +677,8 @@ class Enemy {
         this.lastShot = 0;
         this.type = type;
         this.direction = 1; // Add direction property
+        this.shootDelay = 1000 + Math.random() * 4000; // Randomize shooting delay
+        this.lastShot = Date.now() + Math.random() * 2000; // Offset initial shooting
     }
 
     draw(ctx) {
@@ -710,25 +750,28 @@ class Enemy {
     }
 
     shoot() {
-        // Adjust probability based on level and use object pooling
-        const shootingChance = 0.001 * window.gameInstance.state.level;
-        
-        if (Math.random() < shootingChance) {
-            const bullet = window.gameInstance.createBullet(
-                this.x + this.width / 2, 
-                this.y + this.height,
-                true
-            );
+        const now = Date.now();
+        // Use time-based shooting with randomization to make it more predictable but varied
+        if (now - this.lastShot >= this.shootDelay) {
+            // Create a bullet from the enemy position
+            const bullet = new Bullet(this.x + this.width / 2, this.y + this.height);
+            bullet.speed = -Math.abs(bullet.speed); // Ensure bullet moves downward
+            bullet.enemyBullet = true; // Mark as enemy bullet
             this.bullets.push(bullet);
+            this.lastShot = now;
+            this.shootDelay = 1000 + Math.random() * 4000; // Randomize next shot timing
         }
     }
 
     update(deltaTime) {
-        // Add enemy update logic
+        // Update existing bullets
         this.bullets = this.bullets.filter(bullet => {
             bullet.update(deltaTime);
-            return bullet.y < GAME_CONFIG.height;
+            // Remove bullets that go off screen
+            return bullet.y > 0 && bullet.y < GAME_CONFIG.height;
         });
+        
+        // Try to shoot
         this.shoot();
     }
 }
@@ -740,20 +783,30 @@ class Bullet {
         this.width = BULLET_WIDTH;
         this.height = BULLET_HEIGHT;
         this.speed = 7;
+        this.enemyBullet = false; // Flag to identify enemy bullets
     }
 
     draw(ctx) {
-        ctx.fillStyle = '#fff';
-        // Draw laser bolt
-        ctx.beginPath();
-        ctx.moveTo(this.x, this.y);
-        ctx.lineTo(this.x - this.width, this.y + this.height*0.3);
-        ctx.lineTo(this.x - this.width, this.y + this.height*0.7);
-        ctx.lineTo(this.x, this.y + this.height);
-        ctx.lineTo(this.x + this.width, this.y + this.height*0.7);
-        ctx.lineTo(this.x + this.width, this.y + this.height*0.3);
-        ctx.closePath();
-        ctx.fill();
+        if (this.enemyBullet) {
+            // Enemy bullets are red
+            ctx.fillStyle = '#ff0'; // Yellow for enemy bullets
+            // Draw enemy bullet as a different shape
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.width * 2, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            // Player bullets stay white laser bolts
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.moveTo(this.x, this.y);
+            ctx.lineTo(this.x - this.width, this.y + this.height*0.3);
+            ctx.lineTo(this.x - this.width, this.y + this.height*0.7);
+            ctx.lineTo(this.x, this.y + this.height);
+            ctx.lineTo(this.x + this.width, this.y + this.height*0.7);
+            ctx.lineTo(this.x + this.width, this.y + this.height*0.3);
+            ctx.closePath();
+            ctx.fill();
+        }
     }
 
     update(deltaTime) {
