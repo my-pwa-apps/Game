@@ -1,3 +1,10 @@
+const PLAYER_WIDTH = 50;
+const PLAYER_HEIGHT = 30;
+const ENEMY_WIDTH = 40;
+const ENEMY_HEIGHT = 30;
+const BULLET_WIDTH = 3;
+const BULLET_HEIGHT = 15;
+
 const GAME_CONFIG = {
     width: 800,
     height: 600,
