@@ -1,0 +1,38 @@
+body {
+    margin: 0;
+    background: black;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+#game-container {
+    position: relative;
+}
+
+#gameCanvas {
+    border: 2px solid #fff;
+}
+
+#mobile-controls {
+    display: none;
+    justify-content: space-between;
+    padding: 20px;
+    width: 100%;
+}
+
+button {
+    background: rgba(255, 255, 255, 0.2);
+    border: 2px solid #fff;
+    color: #fff;
+    padding: 15px 30px;
+    font-size: 24px;
+    border-radius: 8px;
+}
+
+@media (max-width: 768px) {
+    #mobile-controls {
+        display: flex;
+    }
+}
