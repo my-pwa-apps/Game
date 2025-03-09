@@ -125,6 +125,20 @@ class Game {
         });
     }
 
+    handleKeyboard(e) {
+        switch(e.key) {
+            case 'ArrowLeft':
+                this.player.move(-1);
+                break;
+            case 'ArrowRight':
+                this.player.move(1);
+                break;
+            case ' ':
+                this.player.shoot();
+                break;
+        }
+    }
+
     handleTouch(e) {
         e.preventDefault();
         const rect = this.canvas.getBoundingClientRect();
@@ -132,6 +146,12 @@ class Game {
         const x = (touch.clientX - rect.left) * (this.canvas.width / rect.width);
         this.state.touches.set(touch.identifier, { x, y: touch.clientY });
         this.player.move(x > this.player.x ? 1 : -1);
+    }
+
+    handleTouchEnd(e) {
+        e.preventDefault();
+        this.state.touches.clear();
+        this.player.shoot();
     }
 
     update(deltaTime) {
@@ -226,14 +246,35 @@ class Game {
         alert(`Congratulations! You completed all ${this.state.maxLevel} levels!`);
         this.stop();
     }
+
+    initEnemies() {
+        const currentLevel = GAME_CONFIG.levels[this.state.level - 1];
+        const rows = currentLevel.enemyRows;
+        const cols = 8;
+        
+        for (let i = 0; i < rows; i++) {
+            for (let j = 0; j < cols; j++) {
+                const enemy = new Enemy(
+                    j * (ENEMY_WIDTH + 20) + 50,
+                    i * (ENEMY_HEIGHT + 20) + 50,
+                    currentLevel.enemyType
+                );
+                this.entities.add(enemy);
+            }
+        }
+    }
+
+    updateScore() {
+        document.getElementById('score').textContent = `Score: ${this.state.score}`;
+    }
 }
 
 class Player {
     constructor() {
         this.width = PLAYER_WIDTH;
         this.height = PLAYER_HEIGHT;
-        this.x = canvas.width / 2 - this.width / 2;
-        this.y = canvas.height - this.height - 10;
+        this.x = GAME_CONFIG.width / 2 - this.width / 2;
+        this.y = GAME_CONFIG.height - this.height - 10;
         this.speed = 5;
         this.bullets = [];
         this.lastShot = 0;
@@ -264,7 +305,7 @@ class Player {
     }
 
     move(direction) {
-        this.x = Math.max(0, Math.min(canvas.width - this.width, this.x + direction * this.speed));
+        this.x = Math.max(0, Math.min(GAME_CONFIG.width - this.width, this.x + direction * this.speed));
     }
 
     shoot() {
@@ -290,7 +331,7 @@ class Enemy {
         this.y = y;
         this.width = ENEMY_WIDTH;
         this.height = ENEMY_HEIGHT;
-        this.speed = GAME_CONFIG.levels[game.state.level - 1].enemySpeed;
+        this.speed = GAME_CONFIG.levels[0].enemySpeed; // Start with first level speed
         this.bullets = [];
         this.lastShot = 0;
         this.type = type;
