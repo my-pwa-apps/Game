@@ -641,11 +641,37 @@ class Game {
     }
 
     setupCanvas() {
+        const isMobile = window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches;
         const { width, height, scale } = GAME_CONFIG;
+        
+        // Calculate available height considering menu controls on mobile
+        const availableHeight = isMobile ? 
+            window.innerHeight - 100 : // 100px for controls
+            window.innerHeight;
+        
+        // Calculate scale while maintaining aspect ratio
+        const screenRatio = window.innerWidth / availableHeight;
+        const gameRatio = width / height;
+        
+        let finalScale = scale;
+        let finalWidth = width;
+        let finalHeight = height;
+        
+        if (screenRatio < gameRatio) {
+            // Width limited
+            finalWidth = window.innerWidth;
+            finalHeight = finalWidth / gameRatio;
+        } else {
+            // Height limited
+            finalHeight = availableHeight;
+            finalWidth = finalHeight * gameRatio;
+        }
+        
+        // Set canvas size
         this.canvas.width = width * scale;
         this.canvas.height = height * scale;
-        this.canvas.style.width = `${width}px`;
-        this.canvas.style.height = `${height}px`;
+        this.canvas.style.width = `${finalWidth}px`;
+        this.canvas.style.height = `${finalHeight}px`;
         this.ctx.scale(scale, scale);
     }
 
