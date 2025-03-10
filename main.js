@@ -1051,7 +1051,7 @@ class Game {
         const existingMessages = document.querySelectorAll('.level-message');
         existingMessages.forEach(msg => msg.remove());
         
-        // Show victory screen with large text and more information
+        // Show victory screen
         this.ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
         this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
         
@@ -1076,6 +1076,14 @@ class Game {
         // Show device-appropriate restart instructions
         if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
             document.getElementById('restart-button').classList.remove('hidden');
+            document.getElementById('start-button').classList.add('hidden');
+        } else {
+            this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+        }
+        
+        // Create victory effects
+        this.createVictoryExplosions();
+        
         // Stop the game loop
         this.stop();
         
