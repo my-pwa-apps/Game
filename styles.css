@@ -134,8 +134,10 @@ button {
     display: none;
     flex-direction: column;
     align-items: center;
-    gap: 15px;
+    gap: 20px;
     z-index: 11;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.5);
     pointer-events: auto;
     touch-action: manipulation;
 }
@@ -144,11 +146,11 @@ button {
     background: rgba(0, 255, 0, 0.3);
     color: #fff;
     border: 2px solid #0f0;
-    padding: 15px 30px;
-    font-size: 18px;
-    border-radius: 8px;
+    padding: 20px 30px;
+    font-size: 24px;
+    border-radius: 12px;
     text-align: center;
-    min-width: 180px;
+    min-width: 200px;
     cursor: pointer;
     user-select: none;
     touch-action: manipulation;
@@ -197,7 +199,18 @@ button {
 /* Show controls on touch devices and smaller screens */
 @media (max-width: 768px), (hover: none) {
     #menu-controls {
+        bottom: 60px;
         display: flex;
+    }
+    
+    #gameCanvas {
+        max-height: calc(100vh - 200px);
+        margin-top: 20px;
+    }
+    
+    .menu-button {
+        padding: 25px 30px;
+        font-size: 28px;
     }
     
     #gameCanvas {

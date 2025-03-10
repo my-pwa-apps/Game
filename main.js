@@ -428,11 +428,60 @@ class Game {
         this.prepareBackgroundStars();
         this.bindKeys();
         this.bindSwipeControls();
+        this.bindMenuControls(); // Add this line
         
-        // Important: Call this after all methods are defined
         this.createInitialEnemies();
     }
-    
+
+    bindMenuControls() {
+        const startBtn = document.getElementById('start-button');
+        const muteBtn = document.getElementById('mute-button');
+        const restartBtn = document.getElementById('restart-button');
+        
+        if (startBtn) {
+            ['touchstart', 'click'].forEach(eventType => {
+                startBtn.addEventListener(eventType, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.initAudio();
+                    
+                    if (this.state.gameState === GameState.MENU || 
+                        this.state.gameState === GameState.GAME_OVER) {
+                        this.startGame();
+                        startBtn.classList.add('hidden');
+                        restartBtn.classList.remove('hidden');
+                    }
+                });
+            });
+        }
+
+        if (muteBtn) {
+            ['touchstart', 'click'].forEach(eventType => {
+                muteBtn.addEventListener(eventType, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.initAudio();
+                    this.soundManager.toggleMute();
+                    muteBtn.textContent = this.soundManager.isMuted ? "UNMUTE" : "MUTE";
+                });
+            });
+        }
+
+        if (restartBtn) {
+            ['touchstart', 'click'].forEach(eventType => {
+                restartBtn.addEventListener(eventType, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.initAudio();
+                    
+                    if (this.state.gameState === GameState.GAME_OVER) {
+                        this.startGame();
+                    }
+                });
+            });
+        }
+    }
+
     // Add touch controls bindings
     bindTouchControls() {
         // Mobile control buttons
@@ -995,6 +1044,10 @@ class Game {
         this.entities.add(this.player);
         this.initEnemies();
         
+        // Update menu visibility
+        document.getElementById('start-button').classList.add('hidden');
+        document.getElementById('restart-button').classList.remove('hidden');
+        
         this.start();
     }
     
@@ -1312,11 +1365,8 @@ class Game {
         
         this.ctx.font = '20px Arial';
         
-        // Show different instructions based on device type
         if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
             this.ctx.fillText('Slide to move, tap to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height/2);
-            
-            // Update menu controls visibility
             document.getElementById('start-button').classList.remove('hidden');
             document.getElementById('restart-button').classList.add('hidden');
         } else {
@@ -1326,14 +1376,14 @@ class Game {
             this.ctx.fillText('P to pause, M to mute', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.65);
         }
         
-        // Draw a small player ship for visual appeal
+        // Draw player ship
         this.ctx.save();
-        this.ctx.translate(GAME_CONFIG.width/2, GAME_CONFIG.height * 0.8);
+        this.ctx.translate(GAME_CONFIG.width/2, GAME_CONFIG.height * 0.75);
         this.ctx.fillStyle = '#0f0';
         this.ctx.beginPath();
         this.ctx.moveTo(0, -15);
-        this.ctx.lineTo(25, 15);
-        this.ctx.lineTo(-25, 15);
+        ctx.lineTo(25, 15);
+        ctx.lineTo(-25, 15);
         this.ctx.closePath();
         this.ctx.fill();
         this.ctx.restore();
