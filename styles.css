@@ -128,16 +128,15 @@ button {
 
 #menu-controls {
     position: absolute;
-    bottom: 40px;
+    bottom: 20px;
     left: 0;
     right: 0;
     display: none;
     flex-direction: column;
     align-items: center;
-    gap: 20px;
-    z-index: 11;
+    gap: 15px;
+    z-index: 1; /* Lower z-index so it doesn't interfere with gameplay */
     padding: 20px;
-    background: rgba(0, 0, 0, 0.5);
     pointer-events: auto;
     touch-action: manipulation;
 }
@@ -222,6 +221,49 @@ button {
         top: 10px;
         left: 10px;
         font-size: 16px;
+    }
+}
+
+/* Show controls on touch devices and smaller screens */
+@media (max-width: 768px), (hover: none) {
+    #game-container {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        height: 100vh;
+    }
+
+    #gameCanvas {
+        flex: 1;
+        margin-bottom: 100px; /* Make room for controls */
+        max-height: calc(100vh - 160px);
+        z-index: 2; /* Higher z-index for gameplay area */
+        position: relative; /* Change to relative */
+        transform: none;
+        top: 20px;
+        left: 0;
+    }
+    
+    #menu-controls {
+        position: fixed; /* Change to fixed */
+        bottom: 0;
+        display: flex;
+        background: rgba(0, 0, 0, 0.8);
+        padding: 10px 20px;
+        padding-bottom: max(20px, env(safe-area-inset-bottom));
+    }
+
+    #game-stats {
+        z-index: 3; /* Highest z-index for stats */
+    }
+}
+
+/* Remove duplicate media query */
+@media (max-width: 768px), (hover: none) {
+    .menu-button {
+        padding: 15px 20px;
+        font-size: 20px;
+        min-width: 140px;
     }
 }
 
