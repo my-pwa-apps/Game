@@ -890,21 +890,23 @@ class Game {
         const playerBullets = this.player.bullets;
         const enemies = [...this.entities].filter(e => e instanceof Enemy);
         
-        // Early return if no enemies or we're already transitioning
+        // Early return if no enemies and transition to victory/next level
         if (enemies.length === 0 && !this.isTransitioningLevel) {
-            this.isTransitioningLevel = true;  // Set flag to prevent multiple calls
+            this.isTransitioningLevel = true;
+            
+            // Important: Need to clean up any remaining player bullets
+            playerBullets.forEach(bullet => this.bulletPool.release(bullet));
+            this.player.bullets = [];
             
             // Check if this was the final level
             if (this.state.level >= this.state.maxLevel) {
-                // If we completed the final level, trigger victory
                 this.handleGameEvent('gameVictory');
             } else {
-                // Otherwise proceed to the next level
                 this.handleGameEvent('levelComplete');
             }
             return;
         }
-        
+
         // Player bullets hitting enemies
         for (let i = playerBullets.length - 1; i >= 0; i--) {
             if (i >= playerBullets.length) continue; // Safety check
@@ -1121,13 +1123,17 @@ class Game {
     }
 
     victory() {
-        // Cancel any pending level transition
+        // Cancel any pending level transition and stop the game first
         this.isTransitioningLevel = false;
-        
+        this.state.isRunning = false;
         this.state.gameState = GameState.GAME_OVER;
         
-        // Clear any level transition messages
-        const existingMessages = document.querySelectorAll('.level-message');
+        // Clean up any remaining entities and effects
+        this.cleanupEntities();
+        this.bonusShip = null;
+        
+        // Clear any existing messages
+        const existingMessages = document.querySelectorAll('.level-message, .bonus-message');
         existingMessages.forEach(msg => msg.remove());
         
         // Show victory screen
