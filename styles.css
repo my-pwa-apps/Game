@@ -127,16 +127,17 @@ button {
 }
 
 #menu-controls {
-    position: absolute;
-    bottom: 20px;
+    position: fixed;
+    bottom: 0;
     left: 0;
     right: 0;
     display: none;
     flex-direction: column;
     align-items: center;
     gap: 15px;
-    z-index: 1; /* Lower z-index so it doesn't interfere with gameplay */
-    padding: 20px;
+    z-index: 100;
+    padding: 15px;
+    background: rgba(0, 0, 0, 0.8);
     pointer-events: auto;
     touch-action: manipulation;
 }
@@ -197,73 +198,40 @@ button {
 
 /* Show controls on touch devices and smaller screens */
 @media (max-width: 768px), (hover: none) {
-    #menu-controls {
-        bottom: 60px;
-        display: flex;
-    }
-    
-    #gameCanvas {
-        max-height: calc(100vh - 200px);
-        margin-top: 20px;
-    }
-    
-    .menu-button {
-        padding: 25px 30px;
-        font-size: 28px;
-    }
-    
-    #gameCanvas {
-        max-height: calc(100vh - 80px);
-    }
-    
-    /* Adjust game stats position */
-    #game-stats {
-        top: 10px;
-        left: 10px;
-        font-size: 16px;
-    }
-}
-
-/* Show controls on touch devices and smaller screens */
-@media (max-width: 768px), (hover: none) {
     #game-container {
         display: flex;
         flex-direction: column;
-        justify-content: space-between;
+        justify-content: center;
         height: 100vh;
     }
 
     #gameCanvas {
-        flex: 1;
-        margin-bottom: 100px; /* Make room for controls */
-        max-height: calc(100vh - 160px);
-        z-index: 2; /* Higher z-index for gameplay area */
-        position: relative; /* Change to relative */
-        transform: none;
-        top: 20px;
+        position: relative;
+        top: 0;
         left: 0;
+        transform: none;
+        margin: 20px auto;
+        max-height: calc(100vh - 140px);
+        z-index: 1;
     }
-    
+
     #menu-controls {
-        position: fixed; /* Change to fixed */
-        bottom: 0;
         display: flex;
-        background: rgba(0, 0, 0, 0.8);
-        padding: 10px 20px;
         padding-bottom: max(20px, env(safe-area-inset-bottom));
     }
 
-    #game-stats {
-        z-index: 3; /* Highest z-index for stats */
-    }
-}
-
-/* Remove duplicate media query */
-@media (max-width: 768px), (hover: none) {
     .menu-button {
         padding: 15px 20px;
         font-size: 20px;
         min-width: 140px;
+        margin-bottom: env(safe-area-inset-bottom);
+    }
+
+    #game-stats {
+        top: 10px;
+        left: 10px;
+        font-size: 16px;
+        z-index: 2;
     }
 }
 

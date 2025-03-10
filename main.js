@@ -1367,8 +1367,6 @@ class Game {
         
         if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
             this.ctx.fillText('Slide to move, tap to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height/2);
-            document.getElementById('start-button').classList.remove('hidden');
-            document.getElementById('restart-button').classList.add('hidden');
         } else {
             this.ctx.fillText('Press ENTER to start', GAME_CONFIG.width/2, GAME_CONFIG.height/2);
             this.ctx.font = '16px Arial';
@@ -1376,17 +1374,21 @@ class Game {
             this.ctx.fillText('P to pause, M to mute', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.65);
         }
         
-        // Draw player ship
+        // Fix player ship drawing
         this.ctx.save();
         this.ctx.translate(GAME_CONFIG.width/2, GAME_CONFIG.height * 0.75);
         this.ctx.fillStyle = '#0f0';
         this.ctx.beginPath();
         this.ctx.moveTo(0, -15);
-        ctx.lineTo(25, 15);
-        ctx.lineTo(-25, 15);
+        this.ctx.lineTo(25, 15);
+        this.ctx.lineTo(-25, 15);
         this.ctx.closePath();
         this.ctx.fill();
         this.ctx.restore();
+        
+        // Update menu button visibility
+        document.getElementById('start-button').classList.remove('hidden');
+        document.getElementById('restart-button').classList.add('hidden');
     }
     
     renderPauseScreen() {
