@@ -128,7 +128,7 @@ button {
 
 #menu-controls {
     position: absolute;
-    bottom: 100px;
+    bottom: 40px;
     left: 0;
     right: 0;
     display: none;
@@ -136,6 +136,8 @@ button {
     align-items: center;
     gap: 15px;
     z-index: 11;
+    pointer-events: auto;
+    touch-action: manipulation;
 }
 
 .menu-button {
@@ -149,7 +151,8 @@ button {
     min-width: 180px;
     cursor: pointer;
     user-select: none;
-    transition: background-color 0.2s;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .menu-button:active {
@@ -193,17 +196,12 @@ button {
 
 /* Show controls on touch devices and smaller screens */
 @media (max-width: 768px), (hover: none) {
-    #mobile-controls {
-        display: flex;
-    }
-    
     #menu-controls {
         display: flex;
     }
     
-    /* Make space for controls */
     #gameCanvas {
-        max-height: calc(100vh - 120px);
+        max-height: calc(100vh - 80px);
     }
     
     /* Adjust game stats position */

@@ -394,6 +394,27 @@ class Game {
         // Prevent zombie intervals/timeouts
         this.activeTimeouts = new Set();
 
+        // Add touch control properties
+        this.touchStartX = 0;
+        this.touchStartTime = 0;
+        this.playerVelocity = 0;
+        this.maxVelocity = 15;
+        this.velocityDecay = 0.95;
+        this.swipeThreshold = 5; // Minimum swipe distance to trigger movement
+
+        // Optimize touch control properties
+        this.touch = {
+            startX: 0,
+            startTime: 0,
+            lastX: 0,
+            lastTime: 0,
+            velocity: 0,
+            maxVelocity: 20,
+            velocityDecay: 0.92,
+            minSwipeDistance: 5,
+            isTouching: false
+        };
+
         // Initialize the game but defer enemy creation until after method definitions
         this.init();
     }
@@ -406,7 +427,7 @@ class Game {
         this.entities.add(this.player); // Add player to entities
         this.prepareBackgroundStars();
         this.bindKeys();
-        this.bindTouchControls();
+        this.bindSwipeControls();
         
         // Important: Call this after all methods are defined
         this.createInitialEnemies();
@@ -706,6 +727,17 @@ class Game {
         // Update player first
         this.player.update(deltaTime);
         
+        // Apply player velocity with momentum
+        if (this.playerVelocity !== 0) {
+            this.player.move(this.playerVelocity * this.deltaMultiplier);
+            this.playerVelocity *= this.velocityDecay;
+            
+            // Stop very small movements
+            if (Math.abs(this.playerVelocity) < 0.1) {
+                this.playerVelocity = 0;
+            }
+        }
+        
         // Update enemies and movement
         this.updateEnemyMovement(deltaTime);
         
@@ -721,6 +753,21 @@ class Game {
 
         // Update and potentially spawn bonus ship
         this.updateBonusShip(deltaTime);
+
+        // Update player movement with momentum
+        if (this.touch.velocity !== 0) {
+            this.player.move(this.touch.velocity * this.deltaMultiplier);
+            
+            // Apply velocity decay only when not touching
+            if (!this.touch.isTouching) {
+                this.touch.velocity *= this.touch.velocityDecay;
+                
+                // Stop very small movements
+                if (Math.abs(this.touch.velocity) < 0.1) {
+                    this.touch.velocity = 0;
+                }
+            }
+        }
     }
     
     updateEnemyMovement(deltaTime) {
@@ -1004,31 +1051,31 @@ class Game {
         const existingMessages = document.querySelectorAll('.level-message');
         existingMessages.forEach(msg => msg.remove());
         
-        // Show victory screen
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        // Show victory screen with large text and more information
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
         this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
         
-        this.ctx.fillStyle = '#0f0'; // Green text for victory
-        this.ctx.font = '40px Arial';
+        // Draw congratulations text
+        this.ctx.fillStyle = '#0f0';
+        this.ctx.font = '60px Arial';
         this.ctx.textAlign = 'center';
-        this.ctx.fillText('VICTORY!', GAME_CONFIG.width/2, GAME_CONFIG.height/3);
+        this.ctx.fillText('VICTORY!', GAME_CONFIG.width/2, GAME_CONFIG.height/3 - 40);
         
+        // Draw completion message
+        this.ctx.font = '30px Arial';
+        this.ctx.fillText('Congratulations!', GAME_CONFIG.width/2, GAME_CONFIG.height/3 + 20);
+        this.ctx.fillText('You saved Earth from the aliens!', GAME_CONFIG.width/2, GAME_CONFIG.height/3 + 60);
+        
+        // Draw stats
         this.ctx.fillStyle = '#fff';
-        this.ctx.font = '20px Arial';
-        this.ctx.fillText(`You completed all ${this.state.maxLevel} levels!`, GAME_CONFIG.width/2, GAME_CONFIG.height*0.45);
-        this.ctx.fillText(`Final Score: ${this.state.score}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2);
+        this.ctx.font = '24px Arial';
+        this.ctx.fillText(`Levels Completed: ${this.state.maxLevel}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2);
+        this.ctx.fillText(`Final Score: ${this.state.score}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2 + 40);
+        this.ctx.fillText(`Lives Remaining: ${this.state.lives}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2 + 80);
         
-        // Show different restart instructions based on device
+        // Show device-appropriate restart instructions
         if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
             document.getElementById('restart-button').classList.remove('hidden');
-            document.getElementById('start-button').classList.add('hidden');
-        } else {
-            this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
-        }
-        
-        // Add a celebratory effect - create multiple explosions
-        this.createVictoryExplosions();
-        
         // Stop the game loop
         this.stop();
         
@@ -1259,7 +1306,7 @@ class Game {
         
         // Show different instructions based on device type
         if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
-            this.ctx.fillText('Use on-screen controls to play', GAME_CONFIG.width/2, GAME_CONFIG.height/2);
+            this.ctx.fillText('Slide to move, tap to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height/2);
             
             // Update menu controls visibility
             document.getElementById('start-button').classList.remove('hidden');
@@ -1420,6 +1467,67 @@ class Game {
         
         // Clean up all bullet pools
         this.bulletPool.releaseAll();
+    }
+
+    bindSwipeControls() {
+        if (!this.canvas) return;
+
+        const touchStart = (e) => {
+            e.preventDefault();
+            this.initAudio();
+            
+            const touch = e.touches[0];
+            this.touch.startX = touch.clientX;
+            this.touch.lastX = touch.clientX;
+            this.touch.startTime = Date.now();
+            this.touch.lastTime = Date.now();
+            this.touch.velocity = 0;
+            this.touch.isTouching = true;
+        };
+
+        const touchMove = (e) => {
+            if (!this.touch.isTouching || this.state.gameState !== GameState.PLAYING) return;
+            e.preventDefault();
+            
+            const touch = e.touches[0];
+            const now = Date.now();
+            const deltaTime = now - this.touch.lastTime;
+            if (deltaTime === 0) return;
+
+            const deltaX = touch.clientX - this.touch.lastX;
+            
+            // Calculate new velocity based on movement speed
+            const newVelocity = (deltaX / deltaTime) * 2;
+            
+            // Smooth velocity transitions
+            this.touch.velocity = 0.6 * this.touch.velocity + 0.4 * newVelocity;
+            this.touch.velocity = Math.max(-this.touch.maxVelocity, 
+                                        Math.min(this.touch.maxVelocity, this.touch.velocity));
+            
+            this.touch.lastX = touch.clientX;
+            this.touch.lastTime = now;
+        };
+
+        const touchEnd = (e) => {
+            e.preventDefault();
+            
+            // Check for tap (quick touch with minimal movement)
+            const touchDuration = Date.now() - this.touch.startTime;
+            const touch = e.changedTouches[0];
+            const moveDistance = Math.abs(touch.clientX - this.touch.startX);
+            
+            if (touchDuration < 200 && moveDistance < 10) {
+                if (this.state.gameState === GameState.PLAYING) {
+                    this.player.shoot();
+                }
+            }
+            
+            this.touch.isTouching = false;
+        };
+
+        this.canvas.addEventListener('touchstart', touchStart, { passive: false });
+        this.canvas.addEventListener('touchmove', touchMove, { passive: false });
+        this.canvas.addEventListener('touchend', touchEnd, { passive: false });
     }
 }
 
