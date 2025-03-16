@@ -1584,6 +1584,9 @@ class Game {
                 enemy.direction *= -1;
                 enemy.y += 20;
                 
+                // Increase speed as enemies move down
+                enemy.speed += 0.1;
+                
                 // Check if enemy reached player level - game over
                 if (enemy.y + enemy.height >= this.player.y) {
                     this.gameOver("Aliens reached your ship!");
