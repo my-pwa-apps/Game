@@ -136,6 +136,409 @@ class SpatialGrid {
     }
 }
 
+// Add the missing SoundManager class before the Game class
+
+// After audioContext definition, add the SoundManager class
+class SoundManager {
+    constructor() {
+        this.audioContext = audioContext;
+        this.isMuted = false;
+    }
+
+    playShoot() {
+        if (this.isMuted) return;
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(110, this.audioContext.currentTime + 0.1);
+        
+        gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.start();
+        oscillator.stop(this.audioContext.currentTime + 0.1);
+    }
+
+    playExplosion() {
+        if (this.isMuted) return;
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.type = 'sawtooth';
+        oscillator.frequency.setValueAtTime(100, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(1, this.audioContext.currentTime + 0.2);
+        
+        gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.start();
+        oscillator.stop(this.audioContext.currentTime + 0.2);
+    }
+
+    playAlienMove() {
+        if (this.isMuted) return;
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.type = 'square';
+        oscillator.frequency.setValueAtTime(150 + Math.random() * 30, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(50, this.audioContext.currentTime + 0.1);
+        
+        gainNode.gain.setValueAtTime(0.05, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + 0.1);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.start();
+        oscillator.stop(this.audioContext.currentTime + 0.1);
+    }
+
+    playPlayerHit() {
+        if (this.isMuted) return;
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.type = 'triangle';
+        oscillator.frequency.setValueAtTime(200, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(50, this.audioContext.currentTime + 0.3);
+        
+        gainNode.gain.setValueAtTime(0.4, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.start();
+        oscillator.stop(this.audioContext.currentTime + 0.3);
+    }
+
+    playBulletCollision() {
+        if (this.isMuted) return;
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.type = 'triangle';
+        oscillator.frequency.setValueAtTime(440, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(220, this.audioContext.currentTime + 0.05);
+        
+        gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.05);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.start();
+        oscillator.stop(this.audioContext.currentTime + 0.05);
+    }
+
+    playBonusShip() {
+        if (this.isMuted) return;
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(660, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(440, this.audioContext.currentTime + 0.3);
+        
+        gainNode.gain.setValueAtTime(0.2, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.start();
+        oscillator.stop(this.audioContext.currentTime + 0.3);
+    }
+
+    playPowerupCollect() {
+        if (this.isMuted) return;
+        
+        // Play ascending notes for powerup
+        this._playOscillator('sine', 440, 880, 0.2, 0.1);
+        
+        setTimeout(() => {
+            this._playOscillator('sine', 660, 990, 0.2, 0.1);
+        }, 100);
+        
+        setTimeout(() => {
+            this._playOscillator('sine', 880, 1320, 0.2, 0.1);
+        }, 200);
+    }
+    
+    _playOscillator(type, freqStart, freqEnd, gain, duration) {
+        if (this.isMuted) return;
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.type = type;
+        oscillator.frequency.setValueAtTime(freqStart, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(freqEnd, this.audioContext.currentTime + duration);
+        
+        gainNode.gain.setValueAtTime(gain, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.start();
+        oscillator.stop(this.audioContext.currentTime + duration);
+    }
+    
+    toggleMute() {
+        this.isMuted = !this.isMuted;
+    }
+}
+
+// Also add the Explosion and ParticleSystem classes before the Game class
+class Explosion {
+    constructor() {
+        this.x = 0;
+        this.y = 0;
+        this.size = 30;
+        this.color = '#ff0';
+        this.lifetime = 30;
+        this.age = 0;
+        this.particles = [];
+        this.active = false;
+    }
+    
+    reset({x, y, color = '#ff0', size = 30}) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.color = color;
+        this.age = 0;
+        this.active = true;
+        this.particles = [];
+        this.createParticles();
+        return this;
+    }
+    
+    createParticles() {
+        const particleCount = 20;
+        for (let i = 0; i < particleCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 0.5 + Math.random() * 2;
+            this.particles.push({
+                x: 0,
+                y: 0,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                size: 1 + Math.random() * 3,
+                alpha: 1
+            });
+        }
+    }
+    
+    update() {
+        this.age++;
+        
+        for (const particle of this.particles) {
+            particle.x += particle.vx;
+            particle.y += particle.vy;
+            particle.alpha = 1 - (this.age / this.lifetime);
+        }
+        
+        if (this.age >= this.lifetime) {
+            this.active = false;
+        }
+        
+        return this.active;
+    }
+    
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        
+        for (const particle of this.particles) {
+            ctx.globalAlpha = particle.alpha;
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        ctx.restore();
+    }
+}
+
+// Add a ParticleSystem class for enhanced visual effects
+class ParticleSystem {
+    constructor() {
+        this.particles = [];
+        this.maxParticles = 500;
+        this.screenShake = {
+            intensity: 0,
+            duration: 0,
+            startTime: 0,
+            active: false,
+            
+            start(intensity, duration) {
+                this.intensity = intensity;
+                this.duration = duration;
+                this.startTime = Date.now();
+                this.active = true;
+            },
+            
+            getOffset() {
+                if (!this.active) return {x: 0, y: 0};
+                
+                const elapsed = (Date.now() - this.startTime) / 1000;
+                if (elapsed > this.duration) {
+                    this.active = false;
+                    return {x: 0, y: 0};
+                }
+                
+                const intensity = this.intensity * Math.pow(0.5, elapsed / (this.duration / 5));
+                return {
+                    x: (Math.random() * 2 - 1) * intensity,
+                    y: (Math.random() * 2 - 1) * intensity
+                };
+            }
+        };
+    }
+    
+    addParticle(x, y, color, velocityX, velocityY, size, lifespan) {
+        if (this.particles.length >= this.maxParticles) return;
+        
+        this.particles.push({
+            x, y, color, size,
+            vx: velocityX,
+            vy: velocityY,
+            age: 0,
+            lifespan
+        });
+    }
+    
+    addExplosion(x, y, type) {
+        const count = type === 'boss' ? 40 : 20;
+        const color = type === 'boss' ? '#f00' : type === 'advanced' ? '#f0f' : '#f88';
+        const size = type === 'boss' ? 3 : 2;
+        const lifespan = type === 'boss' ? 60 : 40;
+        
+        for (let i = 0; i < count; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 0.5 + Math.random() * 2;
+            this.addParticle(
+                x, y, color,
+                Math.cos(angle) * speed, Math.sin(angle) * speed,
+                size, lifespan
+            );
+        }
+        
+        // Add screen shake for larger explosions
+        if (type === 'boss') {
+            this.addScreenShake(8, 0.5);
+        }
+    }
+    
+    addPowerupCollect(x, y, color) {
+        for (let i = 0; i < 30; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 0.5 + Math.random() * 3;
+            this.addParticle(
+                x, y, color,
+                Math.cos(angle) * speed, Math.sin(angle) * speed,
+                2, 50
+            );
+        }
+    }
+    
+    addScreenShake(intensity, duration) {
+        this.screenShake.start(intensity, duration);
+    }
+    
+    update(deltaMultiplier) {
+        this.particles = this.particles.filter(p => {
+            p.x += p.vx * deltaMultiplier;
+            p.y += p.vy * deltaMultiplier;
+            p.age += deltaMultiplier;
+            return p.age < p.lifespan;
+        });
+    }
+    
+    draw(ctx) {
+        this.particles.forEach(p => {
+            const alpha = 1 - (p.age / p.lifespan);
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+        });
+        
+        ctx.globalAlpha = 1;
+    }
+    
+    clear() {
+        this.particles = [];
+    }
+    
+    drawStarfield(ctx) {
+        const now = Date.now() / 10000;
+        
+        // Draw animated stars in background
+        for (let i = 0; i < 100; i++) {
+            const x = (i * 17 + Math.sin(now + i * 0.5) * 5) % GAME_CONFIG.width;
+            const y = (i * 13 + Math.cos(now + i * 0.3) * 5) % GAME_CONFIG.height;
+            const size = (Math.sin(now * 2 + i) + 1) * 1.5 + 0.5;
+            const brightness = 0.6 + Math.sin(now * 3 + i * 2) * 0.4;
+            
+            ctx.fillStyle = `rgba(255, 255, 255, ${brightness})`;
+            ctx.beginPath();
+            ctx.arc(x, y, size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+}
+
+// Optimize object pool for better memory management
+class ObjectPool {
+    constructor(objectType, initialSize = 20) {
+        this.objectType = objectType;
+        this.pool = [];
+        this.activeObjects = new Set(); // Track active objects
+        this.grow(initialSize);
+    }
+    
+    grow(size) {
+        for (let i = 0; i < size; i++) {
+            this.pool.push(new this.objectType());
+        }
+    }
+    
+    get(params = {}) {
+        if (this.pool.length === 0) {
+            this.grow(5);
+        }
+        
+        const object = this.pool.pop();
+        object.reset(params);
+        this.activeObjects.add(object); // Track object as active
+        return object;
+    }
+    
+    release(object) {
+        this.activeObjects.delete(object); // Remove from active tracking
+        this.pool.push(object);
+    }
+    
+    // New method to release all objects (useful for cleanup)
+    releaseAll() {
+        this.activeObjects.forEach(obj => this.pool.push(obj));
+        this.activeObjects.clear();
+    }
+}
+
 // Optimize game class with performance improvements
 class Game {
     constructor() {
