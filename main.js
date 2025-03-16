@@ -878,12 +878,10 @@ class Game {
             return;
         }
         
-        // Clear the canvas efficiently
+        // Clear the canvas completely before drawing anything new
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         this.ctx.fillStyle = '#000';
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        
-        // Draw the background without saving context (more efficient)
-        this.ctx.drawImage(this.backgroundCanvas, 0, 0);
         
         // Apply screen shake if active
         let shakeX = 0, shakeY = 0;
@@ -908,6 +906,9 @@ class Game {
             this.renderPauseScreen();
             return;
         }
+        
+        // Draw the stars background for the playing state
+        this.particleSystem.drawStarfield(this.ctx);
         
         // Draw player with blinking effect
         if (!this.playerInvulnerable || Math.floor(Date.now() / 100) % 2) {
@@ -1105,8 +1106,23 @@ class Game {
         this.bindSwipeControls();
         this.bindMenuControls(); // Add this line
         this.bindTouchControls(); // Add this line to enable mobile controls
+        this.lastTimeUpdate = Date.now(); // Initialize this value
         
         this.createInitialEnemies();
+    }
+
+    setupLayeredCanvas() {
+        // Create separate canvases for different layers
+        this.backgroundCanvas = document.createElement('canvas');
+        this.backgroundCanvas.width = GAME_CONFIG.width;
+        this.backgroundCanvas.height = GAME_CONFIG.height;
+        this.bgCtx = this.backgroundCanvas.getContext('2d', { alpha: false });
+        
+        // Pre-render common game elements for reuse
+        this.offscreenCanvas = document.createElement('canvas');
+        this.offscreenCanvas.width = GAME_CONFIG.width;
+        this.offscreenCanvas.height = GAME_CONFIG.height;
+        this.offscreenCtx = this.offscreenCanvas.getContext('2d');
     }
 
     bindMenuControls() {
@@ -1650,16 +1666,20 @@ class Game {
         this.entities.add(this.player);
         this.initEnemies();
         
-        // Update menu visibility
-        document.getElementById('start-button').classList.add('hidden');
-        document.getElementById('restart-button').classList.remove('hidden');
+        // Update menu visibility - ensure menu buttons are properly hidden
+        const startBtn = document.getElementById('start-button');
+        const restartBtn = document.getElementById('restart-button');
+        
+        if (startBtn) startBtn.classList.add('hidden');
+        if (restartBtn) restartBtn.classList.remove('hidden');
         
         // Reset game statistics
         GameStats.reset();
         this.lastTimeUpdate = Date.now();
         
-        // Clear particles
+        // Clear particles and make sure background is redrawn
         this.particleSystem.clear();
+        this.prepareBackgroundStars(); // Redraw background for new game
         
         this.start();
     }
