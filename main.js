@@ -3751,15 +3751,4222 @@ class Enemy {
     }
 }
 
-// Initialize the game when the DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-    try {
-        const game = new Game();
-        game.init();
-        game.prepareBackgroundStars();
-        game.state.gameState = GameState.MENU;
-        game.start();
-    } catch (error) {
-        console.error('Failed to initialize game:', error);
+// Add the BonusShip class (single declaration)
+class BonusShip {
+    constructor() {
+        this.width = BONUS_SHIP_WIDTH;
+        this.height = BONUS_SHIP_HEIGHT;
+        // Randomize direction
+        this.direction = Math.random() > 0.5 ? 1 : -1;
+        // Start off-screen
+        this.x = this.direction > 0 ? -this.width : GAME_CONFIG.width;
+        // Random height in top area of screen
+        this.y = 30 + Math.random() * 80;
+        // Random speed
+        this.speed = 2 + Math.random() * 2;
+        // Random bonus type
+        this.bonusType = this._getRandomBonusType();
+        this.active = true;
     }
-});
+    
+    _getRandomBonusType() {
+        const types = Object.values(BonusType);
+        return types[Math.floor(Math.random() * types.length)];
+    }
+    
+    draw(ctx) {
+        // Get color based on bonus type
+        let color;
+        switch (this.bonusType) {
+            case BonusType.RAPID_FIRE:
+                color = '#ff0'; // Yellow
+                break;
+            case BonusType.MULTI_SHOT:
+                color = '#f0f'; // Purple
+                break;
+            case BonusType.BULLET_SHIELD:
+                color = '#0ff'; // Cyan
+                break;
+            default:
+                color = '#fff';
+        }
+        
+        // Draw bonus ship
+        ctx.fillStyle = color;
+        
+        // Draw saucer body
+        ctx.beginPath();
+        ctx.ellipse(
+            this.x + this.width/2, 
+            this.y + this.height*0.6, 
+            this.width*0.5, 
+            this.height*0.3, 
+            0, 0, Math.PI * 2
+        );
+        ctx.fill();
+        
+        // Draw dome
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(
+            this.x + this.width/2, 
+            this.y + this.height*0.3, 
+            this.width*0.3, 
+            Math.PI, 0
+        );
+        ctx.fill();
+        
+        // Draw lights that blink
+        if (Math.floor(Date.now() / 200) % 2) {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            
+            // Three blinking lights under the ship
+            for (let i = 0; i < 3; i++) {
+                ctx.rect(
+                    this.x + this.width * (0.25 + i * 0.25) - 5,
+                    this.y + this.height * 0.8,
+                    10,
+                    5
+                );
+            }
+            ctx.fill();
+        }
+    }
+    
+    update(deltaTime) {
+        // Calculate movement based on deltaTime for consistent speed
+        const multiplier = window.gameInstance.deltaMultiplier;
+        this.x += this.direction * this.speed * multiplier;
+        
+        // Check if ship has left the screen
+        if ((this.direction > 0 && this.x > GAME_CONFIG.width) || 
+            (this.direction < 0 && this.x < -this.width)) {
+            this.active = false;
+        }
+        
+        return this.active;
+    }
+    
+    hit() {
+        // When hit by player, apply bonus and create explosion
+        const bonusType = this.bonusType;
+        
+        // Create explosion 
+        window.gameInstance.explosions.push(
+            window.gameInstance.explosionPool.get({
+                x: this.x + this.width/2,
+                y: this.y + this.height/2,
+                color: '#fff',
+                size: 40
+            })
+        );
+        
+        // Play sound first
+        window.gameInstance.soundManager.playPowerupCollect();
+        
+        // Apply the bonus with a slight delay to ensure the game state is ready
+        setTimeout(() => {
+            if (window.gameInstance && window.gameInstance.player) {
+                // Apply the bonus to the player
+                if (bonusType === BonusType.EXTRA_LIFE) {
+                    window.gameInstance.state.lives++;
+                    window.gameInstance.updateLives();
+                    // Show message
+                    const messageEl = document.createElement('div');
+                    messageEl.className = 'bonus-message';
+                    messageEl.textContent = "EXTRA LIFE!";
+                    document.getElementById('game-container').appendChild(messageEl);
+                    setTimeout(() => {
+                        messageEl.classList.add('fade-out');
+                        setTimeout(() => messageEl.remove(), 1000);
+                    }, 2000);
+                } else if (bonusType === BonusType.SPEED_BOOST) {
+                    window.gameInstance.player.speedBoost = true;
+                    window.gameInstance.player.speed = 8;
+                    window.gameInstance.player.speedBoostEndTime = Date.now() + GAME_CONFIG.bonusDuration;
+                    // Show message
+                    const messageEl = document.createElement('div');
+                    messageEl.className = 'bonus-message';
+                    messageEl.textContent = "SPEED BOOST!";
+                    document.getElementById('game-container').appendChild(messageEl);
+                    setTimeout(() => {
+                        messageEl.classList.add('fade-out');
+                        setTimeout(() => messageEl.remove(), 1000);
+                    }, 2000);
+                } else {
+                    // Standard bonuses
+                    window.gameInstance.player.applyBonus(bonusType);
+                }
+                
+                // Log bonus application for debugging
+                console.log("Applied bonus:", bonusType);
+                
+                // Update game stats
+                GameStats.powerupsCollected++;
+            }
+        }, 10);
+        
+        this.active = false;
+    }
+}
+
+// Enhance Player class with bonus functionality
+class Player {
+    constructor() {
+        this.width = PLAYER_WIDTH;
+        this.height = PLAYER_HEIGHT;
+        this.x = GAME_CONFIG.width / 2 - this.width / 2;
+        this.y = GAME_CONFIG.height - this.height - 10;
+        this.speed = 5;
+        this.bullets = [];
+        this.lastShot = 0;
+        this.shootDelay = 250; // Minimum time between shots
+        
+        // Add bonus properties
+        this.hasBonus = false;
+        this.bonusType = null;
+        this.bonusEndTime = 0;
+
+        // Add support for speed boost powerup
+        this.speedBoost = false;
+        this.speedBoostEndTime = 0;
+    }
+    
+    draw(ctx) {
+        // Change ship color based on active bonus
+        ctx.fillStyle = this.hasBonus ? this._getBonusColor() : '#0f0';
+        
+        // Draw spaceship body with gradient
+        const gradient = ctx.createLinearGradient(this.x, this.y, this.x, this.y + this.height);
+        gradient.addColorStop(0, '#0f0');
+        gradient.addColorStop(1, '#080');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width / 2, this.y);
+        ctx.lineTo(this.x + this.width, this.y + this.height);
+        ctx.lineTo(this.x + this.width * 0.8, this.y + this.height * 0.8);
+        ctx.lineTo(this.x + this.width * 0.6, this.y + this.height);
+        ctx.lineTo(this.x + this.width * 0.4, this.y + this.height);
+        ctx.lineTo(this.x + this.width * 0.2, this.y + this.height * 0.8);
+        ctx.lineTo(this.x, this.y + this.height);
+        ctx.closePath();
+        ctx.fill();
+
+        // Draw cockpit with gradient
+        const cockpitGradient = ctx.createRadialGradient(this.x + this.width / 2, this.y + this.height * 0.4, 0, this.x + this.width / 2, this.y + this.height * 0.4, this.width * 0.15);
+        cockpitGradient.addColorStop(0, '#00f');
+        cockpitGradient.addColorStop(1, '#004');
+        ctx.fillStyle = cockpitGradient;
+        ctx.beginPath();
+        ctx.arc(this.x + this.width / 2, this.y + this.height * 0.4, this.width * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw shield if bullet shield bonus is active
+        if (this.hasBonus && this.bonusType === BonusType.BULLET_SHIELD) {
+            ctx.strokeStyle = '#0ff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(this.x + this.width/2, this.y + this.height/2, this.width * 0.8, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        // Draw bullets
+        this.bullets.forEach(bullet => bullet.draw(ctx));
+    }
+    
+    _getBonusColor() {
+        switch (this.bonusType) {
+            case BonusType.RAPID_FIRE:
+                return '#ff0'; // Yellow for rapid fire
+            case BonusType.MULTI_SHOT:
+                return '#f0f'; // Purple for multi-shot
+            case BonusType.BULLET_SHIELD:
+                return '#0ff'; // Cyan for bullet shield
+            default:
+                return '#0f0';
+        }
+    }
+    
+    move(direction) {
+        this.x = Math.max(0, Math.min(GAME_CONFIG.width - this.width, this.x + direction * this.speed));
+    }
+
+    shoot() {
+        const now = Date.now();
+        // Get current shoot delay (reduced if rapid fire bonus is active)
+        const currentDelay = this.hasBonus && this.bonusType === BonusType.RAPID_FIRE ? 
+                           this.shootDelay / 3 : this.shootDelay;
+        
+        if (now - this.lastShot >= currentDelay) {
+            // Track shots fired when shooting, not when checking collisions
+            GameStats.shotsFired++;
+            
+            // Normal shot or multi-shot based on bonus
+            if (this.hasBonus && this.bonusType === BonusType.MULTI_SHOT) {
+                // Create 3 bullets for multi-shot - each counts as one shot
+                GameStats.shotsFired += 2; // 2 additional shots
+                
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + this.width / 2, 
+                    y: this.y
+                }));
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + this.width / 4, 
+                    y: this.y + this.height / 3
+                }));
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + 3 * this.width / 4, 
+                    y: this.y + this.height / 3
+                }));
+            } else {
+                // Normal single shot
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + this.width / 2, 
+                    y: this.y
+                }));
+            }
+            
+            this.lastShot = now;
+            window.gameInstance.soundManager.playShoot();
+        }
+    }
+    
+    applyBonus(type) {
+        this.hasBonus = true;
+        this.bonusType = type;
+        this.bonusEndTime = Date.now() + GAME_CONFIG.bonusDuration;
+        
+        // Show message for bonus
+        this._showBonusMessage();
+    }
+    
+    _showBonusMessage() {
+        let message;
+        switch (this.bonusType) {
+            case BonusType.RAPID_FIRE:
+                message = "RAPID FIRE!";
+                break;
+            case BonusType.MULTI_SHOT:
+                message = "MULTI-SHOT!";
+                break;
+            case BonusType.BULLET_SHIELD:
+                message = "BULLET SHIELD!";
+                break;
+        }
+        
+        const messageEl = document.createElement('div');
+        messageEl.className = 'bonus-message';
+        messageEl.textContent = message;
+        document.getElementById('game-container').appendChild(messageEl);
+        
+        setTimeout(() => {
+            messageEl.classList.add('fade-out');
+            setTimeout(() => messageEl.remove(), 1000);
+        }, 2000);
+    }
+    
+    update(deltaTime) {
+        // Check if bonus has expired
+        const now = Date.now();
+        if (this.hasBonus && Date.now() > this.bonusEndTime) {
+            this.hasBonus = false;
+            this.bonusType = null;
+        }
+        
+        // Update bullets with efficient memory management
+        this.bullets = this.bullets.filter(bullet => {
+            bullet.update(deltaTime);
+            
+            if (bullet.y <= 0) {
+                window.gameInstance.bulletPool.release(bullet);
+                return false;
+            }
+            return true;
+        });
+
+        // Check for bonus expiration
+        if ((this.hasBonus && now > this.bonusEndTime) ||
+            (this.speedBoost && now > this.speedBoostEndTime)) {
+            
+            if (this.hasBonus && now > this.bonusEndTime) {
+                this.hasBonus = false;
+                this.bonusType = null;
+            }
+            
+            if (this.speedBoost && now > this.speedBoostEndTime) {
+                this.speedBoost = false;
+                this.speed = 5; // Reset to default speed
+            }
+        }
+    }
+}
+
+// Optimize Enemy class performance
+class Enemy {
+    constructor(x, y, type = 'basic') {
+        this.x = x;
+        this.y = y;
+        this.width = ENEMY_WIDTH;
+        this.height = ENEMY_HEIGHT;
+        this.speed = GAME_CONFIG.levels[0].enemySpeed; // Start with first level speed
+        this.bullets = [];
+        this.lastShot = 0;
+        this.type = type;
+        this.direction = 1; // Add direction property
+        this.shootDelay = 2000 + Math.random() * 6000; // Increase delay between shots
+        this.lastShot = Date.now() + Math.random() * 3000; // Greater offset for initial shooting
+    }
+
+    draw(ctx) {
+        switch(this.type) {
+            case 'basic':
+                this.drawBasicAlien(ctx);
+                break;
+            case 'advanced':
+                this.drawAdvancedAlien(ctx);
+                break;
+            case 'boss':
+                this.drawBossAlien(ctx);
+                break;
+        }
+    }
+
+    drawBasicAlien(ctx) {
+        // Redesigned level 1 alien - more detailed and interesting
+        
+        // Draw an oval-shaped head with green gradient
+        const headGradient = ctx.createLinearGradient(
+            this.x, this.y, 
+            this.x, this.y + this.height
+        );
+        headGradient.addColorStop(0, '#5f0');
+        headGradient.addColorStop(1, '#080');
+        ctx.fillStyle = headGradient;
+        
+        // Draw alien head
+        ctx.beginPath();
+        ctx.ellipse(
+            this.x + this.width/2, 
+            this.y + this.height/2, 
+            this.width * 0.4, 
+            this.height * 0.45, 
+            0, 0, Math.PI * 2
+        );
+        ctx.fill();
+        
+        // Draw large black eyes
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        
+        // Left eye - almond shaped
+        ctx.save();
+        ctx.translate(this.x + this.width * 0.3, this.y + this.height * 0.4);
+        ctx.scale(1, 0.6);
+        ctx.arc(0, 0, this.width * 0.15, 0, Math.PI * 2);
+        ctx.restore();
+        
+        // Right eye - almond shaped 
+        ctx.save();
+        ctx.translate(this.x + this.width * 0.7, this.y + this.height * 0.4);
+        ctx.scale(1, 0.6);
+        ctx.arc(0, 0, this.width * 0.15, 0, Math.PI * 2);
+        ctx.restore();
+        ctx.fill();
+        
+        // Draw reflective highlights in eyes
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.25, this.y + this.height * 0.38, this.width * 0.05, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width * 0.65, this.y + this.height * 0.38, this.width * 0.05, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw small mouth
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width * 0.4, this.y + this.height * 0.7);
+        ctx.lineTo(this.x + this.width * 0.6, this.y + this.height * 0.7);
+        ctx.stroke();
+        
+        // Draw antenna
+        ctx.strokeStyle = '#5f0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width/2, this.y + this.height * 0.1);
+        ctx.lineTo(this.x + this.width/2, this.y - this.height * 0.1);
+        
+        // Antenna top
+        ctx.arc(this.x + this.width/2, this.y - this.height * 0.1, this.width * 0.08, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    drawAdvancedAlien(ctx) {
+        // Draw advanced alien creature with more details
+        
+        // Main body - different color for this alien type
+        ctx.fillStyle = '#f0f'; // Purple alien
+        
+        // Draw oval body
+        ctx.beginPath();
+        ctx.ellipse(this.x + this.width/2, this.y + this.height/2, this.width*0.45, this.height*0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw multiple eyes (3 eyes for advanced alien)
+        ctx.fillStyle = '#0ff'; // Cyan eyes
+        ctx.beginPath();
+        // Left eye
+        ctx.arc(this.x + this.width*0.25, this.y + this.height*0.35, this.width*0.1, 0, Math.PI * 2);
+        // Middle eye (slightly bigger)
+        ctx.arc(this.x + this.width*0.5, this.y + this.height*0.3, this.width*0.12, 0, Math.PI * 2);
+        // Right eye
+        ctx.arc(this.x + this.width*0.75, this.y + this.height*0.35, this.width*0.1, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw pupils
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width*0.25, this.y + this.height*0.35, this.width*0.04, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width*0.5, this.y + this.height*0.3, this.width*0.05, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width*0.75, this.y + this.height*0.35, this.width*0.04, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw tentacles at bottom
+        ctx.strokeStyle = '#f0f';
+        ctx.lineWidth = 3;
+        const baseY = this.y + this.height*0.7;
+        for (let i = 0; i < 4; i++) {
+            const startX = this.x + this.width * (0.3 + i * 0.15);
+            ctx.beginPath();
+            ctx.moveTo(startX, baseY);
+            // Create wavy tentacle
+            ctx.quadraticCurveTo(
+                startX + (i % 2 ? 5 : -5), 
+                baseY + this.height*0.2, 
+                startX + (i % 2 ? 10 : -10), 
+                baseY + this.height*0.35
+            );
+            ctx.stroke();
+        }
+        
+        // Draw mouth
+        ctx.fillStyle = '#400';
+        ctx.beginPath();
+        ctx.ellipse(this.x + this.width/2, this.y + this.height*0.6, this.width*0.2, this.height*0.1, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    drawBossAlien(ctx) {
+        // Create an intimidating alien overlord with crown-like features
+        
+        // Create a metallic gradient for the boss alien
+        const bodyGradient = ctx.createLinearGradient(
+            this.x, this.y,
+            this.x, this.y + this.height
+        );
+        bodyGradient.addColorStop(0, '#f55'); // Light red
+        bodyGradient.addColorStop(0.5, '#900'); // Mid-dark red
+        bodyGradient.addColorStop(1, '#600'); // Dark red
+        
+        // Draw main body - larger and more imposing
+        ctx.fillStyle = bodyGradient;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width * 0.5, this.y + this.height * 0.15); // Top center
+        ctx.lineTo(this.x + this.width * 0.8, this.y + this.height * 0.3); // Upper right
+        ctx.lineTo(this.x + this.width * 0.9, this.y + this.height * 0.7); // Lower right
+        ctx.lineTo(this.x + this.width * 0.5, this.y + this.height * 0.9); // Bottom center
+        ctx.lineTo(this.x + this.width * 0.1, this.y + this.height * 0.7); // Lower left
+        ctx.lineTo(this.x + this.width * 0.2, this.y + this.height * 0.3); // Upper left
+        ctx.closePath();
+        ctx.fill();
+        
+        // Add armor plating details
+        ctx.strokeStyle = '#ff0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width * 0.2, this.y + this.height * 0.4);
+        ctx.lineTo(this.x + this.width * 0.8, this.y + this.height * 0.4);
+        ctx.moveTo(this.x + this.width * 0.3, this.y + this.height * 0.6);
+        ctx.lineTo(this.x + this.width * 0.7, this.y + this.height * 0.6);
+        ctx.stroke();
+        
+        // Draw crown/spikes on top
+        ctx.fillStyle = '#ff0'; // Gold crown
+        ctx.beginPath();
+        // Left spike
+        ctx.moveTo(this.x + this.width * 0.2, this.y + this.height * 0.2);
+        ctx.lineTo(this.x + this.width * 0.25, this.y - this.height * 0.1);
+        ctx.lineTo(this.x + this.width * 0.35, this.y + this.height * 0.15);
+        // Middle spike (taller)
+        ctx.moveTo(this.x + this.width * 0.4, this.y + this.height * 0.1);
+        ctx.lineTo(this.x + this.width * 0.5, this.y - this.height * 0.2);
+        ctx.lineTo(this.x + this.width * 0.6, this.y + this.height * 0.1);
+        // Right spike
+        ctx.moveTo(this.x + this.width * 0.65, this.y + this.height * 0.15);
+        ctx.lineTo(this.x + this.width * 0.75, this.y - this.height * 0.1);
+        ctx.lineTo(this.x + this.width * 0.8, this.y + this.height * 0.2);
+        ctx.fill();
+        
+        // Draw glowing eyes
+        const eyeGlow = ctx.createRadialGradient(
+            this.x + this.width * 0.35, this.y + this.height * 0.3, 0,
+            this.x + this.width * 0.35, this.y + this.height * 0.3, this.width * 0.12
+        );
+        eyeGlow.addColorStop(0, '#f00');
+        eyeGlow.addColorStop(0.7, '#f00');
+        eyeGlow.addColorStop(1, 'rgba(255, 0, 0, 0)');
+        
+        ctx.fillStyle = eyeGlow;
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.35, this.y + this.height * 0.3, this.width * 0.12, 0, Math.PI * 2);
+        ctx.fill();
+        
+        const eyeGlow2 = ctx.createRadialGradient(
+            this.x + this.width * 0.65, this.y + this.height * 0.3, 0,
+            this.x + this.width * 0.65, this.y + this.height * 0.3, this.width * 0.12
+        );
+        eyeGlow2.addColorStop(0, '#f00');
+        eyeGlow2.addColorStop(0.7, '#f00');
+        eyeGlow2.addColorStop(1, 'rgba(255, 0, 0, 0)');
+        
+        ctx.fillStyle = eyeGlow2;
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.65, this.y + this.height * 0.3, this.width * 0.12, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw solid eye centers (pupils)
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.35, this.y + this.height * 0.3, this.width * 0.05, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width * 0.65, this.y + this.height * 0.3, this.width * 0.05, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Add evil mouth with sharp teeth
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.5, this.y + this.height * 0.65, this.width * 0.25, 0, Math.PI, false);
+        ctx.fill();
+        
+        // Add teeth
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+            const toothWidth = this.width * 0.06;
+            const startX = this.x + this.width * 0.3 + (i * toothWidth);
+            
+            // Triangle teeth
+            ctx.moveTo(startX, this.y + this.height * 0.65);
+            ctx.lineTo(startX + toothWidth/2, this.y + this.height * 0.75);
+            ctx.lineTo(startX + toothWidth, this.y + this.height * 0.65);
+        }
+        ctx.fill();
+        
+        // Add pulsing effect for the boss (using current time to oscillate)
+        const pulseAmount = Math.sin(Date.now() / 200) * 0.1 + 0.9;
+        if (pulseAmount > 0.95) {
+            // Add occasional flare/glow around the boss
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.2)'; // Semi-transparent to create trails
+            ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+            
+            // Draw explosions and particles
+            for (let i = 0; i < this.explosions.length; i++) {
+                this.explosions[i].update();
+                this.explosions[i].draw(this.ctx);
+            }
+            
+            // Continue render loop if explosions are still present
+            if (this.explosions.length > 0) {
+                requestAnimationFrame(victoryRenderLoop);
+            }
+        };
+        
+        // Start the victory render loop
+        requestAnimationFrame(victoryRenderLoop);
+        
+        // Important: Update the DOM elements before continuing
+        setTimeout(() => {
+            // Update UI visibility for all device types
+            const startBtn = document.getElementById('start-button');
+            const restartBtn = document.getElementById('restart-button');
+            const muteBtn = document.getElementById('mute-button');
+            
+            // Make sure buttons are properly visible/hidden
+            if (startBtn) {
+                startBtn.classList.add('hidden');
+                console.log("Start button hidden");
+            }
+            
+            if (restartBtn) {
+                restartBtn.classList.remove('hidden');
+                console.log("Restart button shown");
+                
+                // Re-bind the event listener to ensure it works
+                restartBtn.onclick = () => {
+                    console.log("Restart button clicked");
+                    this.startGame();
+                };
+            }
+            
+            // Show device-appropriate restart instructions
+            if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
+                this.ctx.font = '24px Arial';
+                this.ctx.fillStyle = '#fff';
+                this.ctx.fillText('Tap RESTART to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.65);
+            } else {
+                this.ctx.font = '24px Arial';
+                this.ctx.fillStyle = '#fff';
+                this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.65);
+            }
+            
+            // Setup event listener for keyboard restart
+            const restartHandler = (e) => {
+                if (e.key === 'Enter') {
+                    console.log("Enter key pressed for restart");
+                    window.removeEventListener('keydown', restartHandler);
+                    this.startGame();
+                }
+            };
+            
+            window.addEventListener('keydown', restartHandler);
+            
+        }, 500); // Small delay to ensure DOM updates properly
+    }
+    
+    // Add a celebratory effect for victory
+    createVictoryExplosions() {
+        console.log("Creating victory explosions"); // Debug log
+        // Create multiple colorful explosions at random positions
+        const colors = ['#0f0', '#00f', '#f0f', '#ff0', '#0ff'];
+        
+        const createRandomExplosion = (index) => {
+            this.setTrackedTimeout(() => {
+                const x = Math.random() * GAME_CONFIG.width;
+                const y = Math.random() * (GAME_CONFIG.height * 0.7);
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x, y, color,
+                        size: 20 + Math.random() * 40
+                    })
+                );
+                console.log(`Explosion ${index} created at (${x}, ${y}) with color ${color}`); // Debug log
+                
+                if (index < 20) { // Create 20 explosions
+                    createRandomExplosion(index + 1);
+                }
+            }, 200 + Math.random() * 300); // Random delay between explosions
+        };
+        
+        createRandomExplosion(0);
+    }
+
+    // Optimize handling of game events
+    handleGameEvent(eventType, data = {}) {
+        switch(eventType) {
+            case 'playerHit':
+                // Add screen shake effect
+                this.particleSystem.addScreenShake(10, 0.3);
+                
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x: data.x,
+                        y: data.y,
+                        color: '#0f8',
+                        size: 20
+                    })
+                );
+                this.state.lives--;
+                this.updateLives();
+                this.soundManager.playPlayerHit();
+                
+                // Make player invulnerable briefly
+                this.playerInvulnerable = true;
+                this.playerInvulnerableTime = 0;
+                
+                if (this.state.lives <= 0) {
+                    this.handleGameEvent('gameOver', {reason: "You ran out of lives!"});
+                }
+                break;
+                
+            case 'enemyDestroyed':
+                // Add particle effects for enemy explosions
+                this.particleSystem.addExplosion(data.x, data.y, data.enemy.type);
+                
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x: data.x, 
+                        y: data.y,
+                        color: '#f88',
+                        size: 30
+                    })
+                );
+                this.entities.delete(data.enemy);
+                this.state.score += 10;
+                this.soundManager.playExplosion();
+                this.updateScore();
+                break;
+                
+            case 'gameOver':
+                // Final explosion
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x: this.player.x + this.player.width/2,
+                        y: this.player.y + this.player.height/2,
+                        color: '#0f0',
+                        size: 60
+                    })
+                );
+                this.gameOver(data.reason);
+                break;
+                
+            case 'levelComplete':
+                this.nextLevel();
+                break;
+                
+            case 'gameVictory':
+                this.victory();
+                break;
+        }
+    }
+
+    updateBonusShip(deltaTime) {
+        // Update existing bonus ship if present
+        if (this.bonusShip) {
+            if (!this.bonusShip.update(deltaTime)) {
+                this.bonusShip = null;
+            }
+            return;
+        }
+
+        // Random chance to spawn a bonus ship
+        if (Math.random() < GAME_CONFIG.bonusShipChance && this.state.gameState === GameState.PLAYING) {
+            this.bonusShip = new BonusShip();
+            this.soundManager.playBonusShip();
+        }
+    }
+
+    awardExtraLife() {
+        this.state.lives++;
+        this.updateLives();
+        
+        // Display a message
+        const messageEl = document.createElement('div');
+        messageEl.className = 'level-message';
+        messageEl.innerHTML = `LEVEL ${this.state.level} COMPLETE!<br>+1 LIFE`;
+        document.getElementById('game-container').appendChild(messageEl);
+        
+        // Remove after animation
+        this.setTrackedTimeout(() => {
+            messageEl.classList.add('fade-out');
+            this.setTrackedTimeout(() => messageEl.remove(), 1000);
+        }, 2000);
+    }
+
+    /**
+     * Updates the lives display in the DOM
+     */
+    updateLives() {
+        document.getElementById('lives').textContent = `Lives: ${this.state.lives}`;
+    }
+
+    /**
+     * Updates the score display in the DOM
+     */
+    updateScore() {
+        document.getElementById('score').textContent = `Score: ${this.state.score}`;
+    }
+
+    renderMenu() {
+        // Draw animated stars instead of static background
+        this.particleSystem.drawStarfield(this.ctx);
+        
+        // Add animated title with pulsing effect
+        const pulseAmount = Math.sin(Date.now() / 500) * 0.1 + 1;
+        
+        this.ctx.shadowColor = '#0f0';
+        this.ctx.shadowBlur = 15;
+        this.ctx.fillStyle = '#0f0';
+        this.ctx.font = 'bold 60px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.save();
+        this.ctx.translate(GAME_CONFIG.width/2, GAME_CONFIG.height/4);
+        this.ctx.scale(pulseAmount, pulseAmount);
+        this.ctx.fillText('SPACE INVADERS', 0, 0);
+        this.ctx.restore();
+        
+        // Draw high scores
+        this.ctx.shadowBlur = 0;
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '24px Arial';
+        this.ctx.fillText('HIGH SCORES', GAME_CONFIG.width/2, GAME_CONFIG.height/2 + 70);
+        
+        let yPos = GAME_CONFIG.height/2 + 110;
+        if (GAME_CONFIG.highScores.length === 0) {
+            this.ctx.fillText('No scores yet!', GAME_CONFIG.width/2, yPos);
+        } else {
+            GAME_CONFIG.highScores.slice(0, 5).forEach((score, index) => {
+                this.ctx.fillText(`${index + 1}. ${score.score} pts - ${score.date}`, GAME_CONFIG.width/2, yPos);
+                yPos += 30;
+            });
+        }
+        
+        // Draw device-specific instructions
+        this.ctx.font = '20px Arial';
+        if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
+            this.ctx.fillText('Slide to move, tap to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.9);
+        } else {
+            this.ctx.fillText('Press ENTER to start', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.9);
+            this.ctx.font = '16px Arial';
+            this.ctx.fillText('Controls: Arrows to move, Space to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.95);
+            this.ctx.fillText('P to pause, M to mute', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.98);
+        }
+        
+        // Update menu button visibility
+        document.getElementById('start-button').classList.remove('hidden');
+        document.getElementById('restart-button').classList.add('hidden');
+        
+        // Draw player ship with gradients as seen in-game
+        const shipX = GAME_CONFIG.width/2;
+        const shipY = GAME_CONFIG.height * 0.85;
+        const width = PLAYER_WIDTH * 1.5;
+        const height = PLAYER_HEIGHT * 1.5;
+        
+        // Draw thrust flame animation
+        const thrustSize = Math.sin(Date.now() / 100) * 5 + 10;
+        this.ctx.fillStyle = '#f80';
+        this.ctx.beginPath();
+        this.ctx.moveTo(shipX, shipY + height * 0.4);
+        this.ctx.lineTo(shipX - 8, shipY + height * 0.4 + thrustSize);
+        this.ctx.lineTo(shipX + 8, shipY + height * 0.4 + thrustSize);
+        this.ctx.closePath();
+        this.ctx.fill();
+        
+        // Draw spaceship body with gradient - same as in-game ship
+        const gradient = this.ctx.createLinearGradient(shipX - width/2, shipY - height/2, shipX - width/2, shipY + height/2);
+        gradient.addColorStop(0, '#0f0');
+        gradient.addColorStop(1, '#080');
+        this.ctx.fillStyle = gradient;
+        
+        this.ctx.beginPath();
+        this.ctx.moveTo(shipX, shipY - height/2);
+        this.ctx.lineTo(shipX + width/2, shipY + height/2);
+        this.ctx.lineTo(shipX + width * 0.3, shipY + height * 0.3);
+        this.ctx.lineTo(shipX + width * 0.1, shipY + height/2);
+        this.ctx.lineTo(shipX - width * 0.1, shipY + height/2);
+        this.ctx.lineTo(shipX - width * 0.3, shipY + height * 0.3);
+        this.ctx.lineTo(shipX - width/2, shipY + height/2);
+        this.ctx.closePath();
+        this.ctx.fill();
+        
+        // Draw cockpit with gradient
+        const cockpitGradient = this.ctx.createRadialGradient(
+            shipX, shipY - height * 0.1, 0, 
+            shipX, shipY - height * 0.1, width * 0.15
+        );
+        cockpitGradient.addColorStop(0, '#00f');
+        cockpitGradient.addColorStop(1, '#004');
+        this.ctx.fillStyle = cockpitGradient;
+        this.ctx.beginPath();
+        this.ctx.arc(shipX, shipY - height * 0.1, width * 0.15, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Display alien types
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '18px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('ENEMY TYPES', GAME_CONFIG.width/2, GAME_CONFIG.height/2 - 80);
+        
+        // Create temporary enemies to show their designs
+        const tempEnemyWidth = 40;
+        const tempEnemyHeight = 30;
+        const centerX = GAME_CONFIG.width/2;
+        const enemyY = GAME_CONFIG.height/2 - 40;
+        const spacing = 120;
+        
+        // Draw Level 1 Enemy (Basic)
+        // Green alien with oval head
+        const x1 = centerX - spacing;
+        const y1 = enemyY;
+        
+        const headGradient = this.ctx.createLinearGradient(x1, y1, x1, y1 + tempEnemyHeight);
+        headGradient.addColorStop(0, '#5f0');
+        headGradient.addColorStop(1, '#080');
+        this.ctx.fillStyle = headGradient;
+        
+        this.ctx.beginPath();
+        this.ctx.ellipse(x1 + tempEnemyWidth/2, y1 + tempEnemyHeight/2, 
+                    tempEnemyWidth * 0.4, tempEnemyHeight * 0.45, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Eyes
+        this.ctx.fillStyle = '#000';
+        this.ctx.beginPath();
+        this.ctx.save();
+        this.ctx.translate(x1 + tempEnemyWidth * 0.3, y1 + tempEnemyHeight * 0.4);
+        this.ctx.scale(1, 0.6);
+        this.ctx.arc(0, 0, tempEnemyWidth * 0.15, 0, Math.PI * 2);
+        this.ctx.restore();
+        
+        this.ctx.save();
+        this.ctx.translate(x1 + tempEnemyWidth * 0.7, y1 + tempEnemyHeight * 0.4);
+        this.ctx.scale(1, 0.6);
+        this.ctx.arc(0, 0, tempEnemyWidth * 0.15, 0, Math.PI * 2);
+        this.ctx.restore();
+        this.ctx.fill();
+        
+        // Draw Level 2 Enemy (Advanced/Purple)
+        const x2 = centerX;
+        const y2 = enemyY;
+        
+        this.ctx.fillStyle = '#f0f';
+        this.ctx.beginPath();
+        this.ctx.ellipse(x2 + tempEnemyWidth/2, y2 + tempEnemyHeight/2, 
+                    tempEnemyWidth*0.45, tempEnemyHeight*0.4, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Eyes
+        this.ctx.fillStyle = '#0ff';
+        this.ctx.beginPath();
+        this.ctx.arc(x2 + tempEnemyWidth*0.25, y2 + tempEnemyHeight*0.35, tempEnemyWidth*0.1, 0, Math.PI * 2);
+        this.ctx.arc(x2 + tempEnemyWidth*0.5, y2 + tempEnemyHeight*0.3, tempEnemyWidth*0.12, 0, Math.PI * 2);
+        this.ctx.arc(x2 + tempEnemyWidth*0.75, y2 + tempEnemyHeight*0.35, tempEnemyWidth*0.1, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Draw Level 3 Enemy (Boss/Red)
+        const x3 = centerX + spacing;
+        const y3 = enemyY;
+        
+        const bossGradient = this.ctx.createLinearGradient(x3, y3, x3, y3 + tempEnemyHeight);
+        bossGradient.addColorStop(0, '#f55');
+        bossGradient.addColorStop(0.5, '#900');
+        bossGradient.addColorStop(1, '#600');
+        
+        this.ctx.fillStyle = bossGradient;
+        this.ctx.beginPath();
+        this.ctx.moveTo(x3 + tempEnemyWidth * 0.5, y3 + tempEnemyHeight * 0.15);
+        this.ctx.lineTo(x3 + tempEnemyWidth * 0.8, y3 + tempEnemyHeight * 0.3);
+        this.ctx.lineTo(x3 + tempEnemyWidth * 0.9, y3 + tempEnemyHeight * 0.7);
+        this.ctx.lineTo(x3 + tempEnemyWidth * 0.5, y3 + tempEnemyHeight * 0.9);
+        this.ctx.lineTo(x3 + tempEnemyWidth * 0.1, y3 + tempEnemyHeight * 0.7);
+        this.ctx.lineTo(x3 + tempEnemyWidth * 0.2, y3 + tempEnemyHeight * 0.3);
+        this.ctx.closePath();
+        this.ctx.fill();
+        
+        // Eyes
+        this.ctx.fillStyle = '#f00';
+        this.ctx.beginPath();
+        this.ctx.arc(x3 + tempEnemyWidth * 0.35, y3 + tempEnemyHeight * 0.3, tempEnemyWidth * 0.12, 0, Math.PI * 2);
+        this.ctx.arc(x3 + tempEnemyWidth * 0.65, y3 + tempEnemyHeight * 0.3, tempEnemyWidth * 0.12, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Points text
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '14px Arial';
+        this.ctx.fillText('10 pts', x1, y1 + 45);
+        this.ctx.fillText('20 pts', x2, y2 + 45);
+        this.ctx.fillText('30 pts', x3, y3 + 45);
+    }
+
+    renderPauseScreen() {
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+        
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '40px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('PAUSED', GAME_CONFIG.width/2, GAME_CONFIG.height/2);
+        
+        this.ctx.font = '20px Arial';
+        this.ctx.fillText('Press P to resume', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+    }
+
+    /**
+     * Prepare the background stars texture on the offscreen canvas.
+     * This method initializes the starfield to avoid regenerating it on every frame.
+     */
+    prepareBackgroundStars() {
+        // Clear the offscreen canvas
+        this.offscreenCtx.fillStyle = '#000';
+        this.offscreenCtx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+        
+        // Generate a fixed starfield pattern
+        this.stars = [];
+        for (let i = 0; i < 100; i++) {
+            const star = {
+                x: Math.random() * GAME_CONFIG.width,
+                y: Math.random() * GAME_CONFIG.height,
+                size: 0.5 + Math.random() * 1.5, // Different star sizes
+                brightness: 0.5 + Math.random() * 0.5 // Different brightness
+            };
+            this.stars.push(star);
+            
+            // Draw each star on the offscreen canvas
+            this.offscreenCtx.fillStyle = `rgba(255,255,255,${star.brightness})`;
+            this.offscreenCtx.beginPath();
+            this.offscreenCtx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+            this.offscreenCtx.fill();
+        }
+        
+        // Add some larger brighter stars
+        for (let i = 0; i < 10; i++) {
+            const x = Math.random() * GAME_CONFIG.width;
+            const y = Math.random() * GAME_CONFIG.height;
+            const size = 1.5 + Math.random() * 1;
+            
+            // Create a gradient for the star
+            const gradient = this.offscreenCtx.createRadialGradient(x, y, 0, x, y, size * 2);
+            gradient.addColorStop(0, 'rgba(255,255,255,0.8)');
+            gradient.addColorStop(1, 'rgba(255,255,255,0)');
+            
+            this.offscreenCtx.fillStyle = gradient;
+            this.offscreenCtx.beginPath();
+            this.offscreenCtx.arc(x, y, size * 2, 0, Math.PI * 2);
+            this.offscreenCtx.fill();
+        }
+    }
+
+    drawBackground() {
+        // Simply copy the pre-rendered background
+        this.ctx.drawImage(this.offscreenCanvas, 0, 0);
+    }
+
+    gameOver(reason = "Game Over") {
+        // Cancel any pending level transition
+        this.isTransitioningLevel = false;
+        
+        this.state.gameState = GameState.GAME_OVER;
+        
+        // Clear any level transition messages
+        const existingMessages = document.querySelectorAll('.level-message');
+        existingMessages.forEach(msg => msg.remove());
+        
+        // Show game over screen
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+        
+        this.ctx.fillStyle = '#f00';
+        this.ctx.font = '40px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText(reason, GAME_CONFIG.width/2, GAME_CONFIG.height/3);
+        
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '20px Arial';
+        this.ctx.fillText(`Final Score: ${this.state.score}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2);
+        
+        // Show different restart instructions based on device
+        if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
+            document.getElementById('restart-button').classList.remove('hidden');
+            document.getElementById('start-button').classList.add('hidden');
+        } else {
+            this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+        }
+        
+        this.stop();
+        
+        // Setup event listener for restart
+        const restartHandler = (e) => {
+            if (e.key === 'Enter') {
+                window.removeEventListener('keydown', restartHandler);
+                this.startGame();
+            }
+        };
+        
+        window.addEventListener('keydown', restartHandler);
+    }
+
+    // Replace setTimeout with tracked version
+    setTrackedTimeout(callback, delay) {
+        const timeoutId = setTimeout(() => {
+            this.activeTimeouts.delete(timeoutId);
+            callback();
+        }, delay);
+        
+        this.activeTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+    
+    // Clear all active timeouts
+    clearAllTimeouts() {
+        this.activeTimeouts.forEach(id => clearTimeout(id));
+        this.activeTimeouts.clear();
+    }
+
+    // Add a new method to clean up entities between levels
+    cleanupEntities() {
+        // Keep only the player
+        const player = [...this.entities].find(e => e instanceof Player);
+        this.entities.clear();
+        
+        if (player) {
+            this.entities.add(player);
+        }
+        
+        // Clean up all bullet pools
+        this.bulletPool.releaseAll();
+    }
+
+    bindSwipeControls() {
+        if (!this.canvas) return;
+
+        const touchStart = (e) => {
+            e.preventDefault();
+            this.initAudio();
+            
+            const touch = e.touches[0];
+            this.touch.startX = touch.clientX;
+            this.touch.lastX = touch.clientX;
+            this.touch.startTime = Date.now();
+            this.touch.lastTime = Date.now();
+            this.touch.velocity = 0;
+            this.touch.isTouching = true;
+        };
+
+        const touchMove = (e) => {
+            if (!this.touch.isTouching || this.state.gameState !== GameState.PLAYING) return;
+            e.preventDefault();
+            
+            const touch = e.touches[0];
+            const now = Date.now();
+            const deltaTime = now - this.touch.lastTime;
+            if (deltaTime === 0) return;
+
+            const deltaX = touch.clientX - this.touch.lastX;
+            
+            // Calculate new velocity based on movement speed
+            const newVelocity = (deltaX / deltaTime) * 2;
+            
+            // Smooth velocity transitions
+            this.touch.velocity = 0.6 * this.touch.velocity + 0.4 * newVelocity;
+            this.touch.velocity = Math.max(-this.touch.maxVelocity, 
+                                        Math.min(this.touch.maxVelocity, this.touch.velocity));
+            
+            this.touch.lastX = touch.clientX;
+            this.touch.lastTime = now;
+        };
+
+        const touchEnd = (e) => {
+            e.preventDefault();
+            
+            // Check for tap (quick touch with minimal movement)
+            const touchDuration = Date.now() - this.touch.startTime;
+            const touch = e.changedTouches[0];
+            const moveDistance = Math.abs(touch.clientX - this.touch.startX);
+            
+            if (touchDuration < 200 && moveDistance < 10) {
+                if (this.state.gameState === GameState.PLAYING) {
+                    this.player.shoot();
+                }
+            }
+            
+            this.touch.isTouching = false;
+        };
+
+        this.canvas.addEventListener('touchstart', touchStart, { passive: false });
+        this.canvas.addEventListener('touchmove', touchMove, { passive: false });
+        this.canvas.addEventListener('touchend', touchEnd, { passive: false });
+    }
+
+    // High score management
+    loadHighScores() {
+        const savedScores = localStorage.getItem('spaceInvadersHighScores');
+        if (savedScores) {
+            GAME_CONFIG.highScores = JSON.parse(savedScores);
+        }
+    }
+    
+    saveHighScore(score) {
+        // Check if score qualifies for high scores
+        const lowestScore = GAME_CONFIG.highScores.length >= 5 ? 
+            GAME_CONFIG.highScores[GAME_CONFIG.highScores.length - 1].score : 0;
+            
+        const isHighScore = GAME_CONFIG.highScores.length < 5 || score > lowestScore;
+            
+        if (!isHighScore && GAME_CONFIG.highScores.length >= 5) {
+            // Not a high score and we already have 5 scores
+            return false;
+        }
+        
+        GAME_CONFIG.highScores.push({
+            score,
+            date: new Date().toLocaleDateString(),
+            level: this.state.level,
+            accuracy: GameStats.getAccuracy()
+        });
+        
+        // Sort and keep only top 5
+        GAME_CONFIG.highScores.sort((a, b) => b.score - a.score);
+        if (GAME_CONFIG.highScores.length > 5) {
+            GAME_CONFIG.highScores = GAME_CONFIG.highScores.slice(0, 5);
+        }
+        
+        // Save to localStorage
+        localStorage.setItem('spaceInvadersHighScores', JSON.stringify(GAME_CONFIG.highScores));
+        
+        // Return rank (position in high scores)
+        return GAME_CONFIG.highScores.findIndex(s => s.score === score) + 1;
+    }
+
+    formatTime(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${minutes}m ${secs}s`;
+    }
+
+    // Spawn power-up drops from destroyed enemies
+    spawnPowerUpDrop(x, y) {
+        const powerUp = new PowerUpDrop(x, y);
+        this.entities.add(powerUp);
+    }
+}
+
+// Add the BonusShip class (single declaration)
+class BonusShip {
+    constructor() {
+        this.width = BONUS_SHIP_WIDTH;
+        this.height = BONUS_SHIP_HEIGHT;
+        // Randomize direction
+        this.direction = Math.random() > 0.5 ? 1 : -1;
+        // Start off-screen
+        this.x = this.direction > 0 ? -this.width : GAME_CONFIG.width;
+        // Random height in top area of screen
+        this.y = 30 + Math.random() * 80;
+        // Random speed
+        this.speed = 2 + Math.random() * 2;
+        // Random bonus type
+        this.bonusType = this._getRandomBonusType();
+        this.active = true;
+    }
+    
+    _getRandomBonusType() {
+        const types = Object.values(BonusType);
+        return types[Math.floor(Math.random() * types.length)];
+    }
+    
+    draw(ctx) {
+        // Get color based on bonus type
+        let color;
+        switch (this.bonusType) {
+            case BonusType.RAPID_FIRE:
+                color = '#ff0'; // Yellow
+                break;
+            case BonusType.MULTI_SHOT:
+                color = '#f0f'; // Purple
+                break;
+            case BonusType.BULLET_SHIELD:
+                color = '#0ff'; // Cyan
+                break;
+            default:
+                color = '#fff';
+        }
+        
+        // Draw bonus ship
+        ctx.fillStyle = color;
+        
+        // Draw saucer body
+        ctx.beginPath();
+        ctx.ellipse(
+            this.x + this.width/2, 
+            this.y + this.height*0.6, 
+            this.width*0.5, 
+            this.height*0.3, 
+            0, 0, Math.PI * 2
+        );
+        ctx.fill();
+        
+        // Draw dome
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(
+            this.x + this.width/2, 
+            this.y + this.height*0.3, 
+            this.width*0.3, 
+            Math.PI, 0
+        );
+        ctx.fill();
+        
+        // Draw lights that blink
+        if (Math.floor(Date.now() / 200) % 2) {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            
+            // Three blinking lights under the ship
+            for (let i = 0; i < 3; i++) {
+                ctx.rect(
+                    this.x + this.width * (0.25 + i * 0.25) - 5,
+                    this.y + this.height * 0.8,
+                    10,
+                    5
+                );
+            }
+            ctx.fill();
+        }
+    }
+    
+    update(deltaTime) {
+        // Calculate movement based on deltaTime for consistent speed
+        const multiplier = window.gameInstance.deltaMultiplier;
+        this.x += this.direction * this.speed * multiplier;
+        
+        // Check if ship has left the screen
+        if ((this.direction > 0 && this.x > GAME_CONFIG.width) || 
+            (this.direction < 0 && this.x < -this.width)) {
+            this.active = false;
+        }
+        
+        return this.active;
+    }
+    
+    hit() {
+        // When hit by player, apply bonus and create explosion
+        const bonusType = this.bonusType;
+        
+        // Create explosion 
+        window.gameInstance.explosions.push(
+            window.gameInstance.explosionPool.get({
+                x: this.x + this.width/2,
+                y: this.y + this.height/2,
+                color: '#fff',
+                size: 40
+            })
+        );
+        
+        // Play sound first
+        window.gameInstance.soundManager.playPowerupCollect();
+        
+        // Apply the bonus with a slight delay to ensure the game state is ready
+        setTimeout(() => {
+            if (window.gameInstance && window.gameInstance.player) {
+                // Apply the bonus to the player
+                if (bonusType === BonusType.EXTRA_LIFE) {
+                    window.gameInstance.state.lives++;
+                    window.gameInstance.updateLives();
+                    // Show message
+                    const messageEl = document.createElement('div');
+                    messageEl.className = 'bonus-message';
+                    messageEl.textContent = "EXTRA LIFE!";
+                    document.getElementById('game-container').appendChild(messageEl);
+                    setTimeout(() => {
+                        messageEl.classList.add('fade-out');
+                        setTimeout(() => messageEl.remove(), 1000);
+                    }, 2000);
+                } else if (bonusType === BonusType.SPEED_BOOST) {
+                    window.gameInstance.player.speedBoost = true;
+                    window.gameInstance.player.speed = 8;
+                    window.gameInstance.player.speedBoostEndTime = Date.now() + GAME_CONFIG.bonusDuration;
+                    // Show message
+                    const messageEl = document.createElement('div');
+                    messageEl.className = 'bonus-message';
+                    messageEl.textContent = "SPEED BOOST!";
+                    document.getElementById('game-container').appendChild(messageEl);
+                    setTimeout(() => {
+                        messageEl.classList.add('fade-out');
+                        setTimeout(() => messageEl.remove(), 1000);
+                    }, 2000);
+                } else {
+                    // Standard bonuses
+                    window.gameInstance.player.applyBonus(bonusType);
+                }
+                
+                // Log bonus application for debugging
+                console.log("Applied bonus:", bonusType);
+                
+                // Update game stats
+                GameStats.powerupsCollected++;
+            }
+        }, 10);
+        
+        this.active = false;
+    }
+}
+
+// Enhance Player class with bonus functionality
+class Player {
+    constructor() {
+        this.width = PLAYER_WIDTH;
+        this.height = PLAYER_HEIGHT;
+        this.x = GAME_CONFIG.width / 2 - this.width / 2;
+        this.y = GAME_CONFIG.height - this.height - 10;
+        this.speed = 5;
+        this.bullets = [];
+        this.lastShot = 0;
+        this.shootDelay = 250; // Minimum time between shots
+        
+        // Add bonus properties
+        this.hasBonus = false;
+        this.bonusType = null;
+        this.bonusEndTime = 0;
+
+        // Add support for speed boost powerup
+        this.speedBoost = false;
+        this.speedBoostEndTime = 0;
+    }
+    
+    draw(ctx) {
+        // Change ship color based on active bonus
+        ctx.fillStyle = this.hasBonus ? this._getBonusColor() : '#0f0';
+        
+        // Draw spaceship body with gradient
+        const gradient = ctx.createLinearGradient(this.x, this.y, this.x, this.y + this.height);
+        gradient.addColorStop(0, '#0f0');
+        gradient.addColorStop(1, '#080');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width / 2, this.y);
+        ctx.lineTo(this.x + this.width, this.y + this.height);
+        ctx.lineTo(this.x + this.width * 0.8, this.y + this.height * 0.8);
+        ctx.lineTo(this.x + this.width * 0.6, this.y + this.height);
+        ctx.lineTo(this.x + this.width * 0.4, this.y + this.height);
+        ctx.lineTo(this.x + this.width * 0.2, this.y + this.height * 0.8);
+        ctx.lineTo(this.x, this.y + this.height);
+        ctx.closePath();
+        ctx.fill();
+
+        // Draw cockpit with gradient
+        const cockpitGradient = ctx.createRadialGradient(this.x + this.width / 2, this.y + this.height * 0.4, 0, this.x + this.width / 2, this.y + this.height * 0.4, this.width * 0.15);
+        cockpitGradient.addColorStop(0, '#00f');
+        cockpitGradient.addColorStop(1, '#004');
+        ctx.fillStyle = cockpitGradient;
+        ctx.beginPath();
+        ctx.arc(this.x + this.width / 2, this.y + this.height * 0.4, this.width * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw shield if bullet shield bonus is active
+        if (this.hasBonus && this.bonusType === BonusType.BULLET_SHIELD) {
+            ctx.strokeStyle = '#0ff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(this.x + this.width/2, this.y + this.height/2, this.width * 0.8, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        // Draw bullets
+        this.bullets.forEach(bullet => bullet.draw(ctx));
+    }
+    
+    _getBonusColor() {
+        switch (this.bonusType) {
+            case BonusType.RAPID_FIRE:
+                return '#ff0'; // Yellow for rapid fire
+            case BonusType.MULTI_SHOT:
+                return '#f0f'; // Purple for multi-shot
+            case BonusType.BULLET_SHIELD:
+                return '#0ff'; // Cyan for bullet shield
+            default:
+                return '#0f0';
+        }
+    }
+    
+    move(direction) {
+        this.x = Math.max(0, Math.min(GAME_CONFIG.width - this.width, this.x + direction * this.speed));
+    }
+
+    shoot() {
+        const now = Date.now();
+        // Get current shoot delay (reduced if rapid fire bonus is active)
+        const currentDelay = this.hasBonus && this.bonusType === BonusType.RAPID_FIRE ? 
+                           this.shootDelay / 3 : this.shootDelay;
+        
+        if (now - this.lastShot >= currentDelay) {
+            // Track shots fired when shooting, not when checking collisions
+            GameStats.shotsFired++;
+            
+            // Normal shot or multi-shot based on bonus
+            if (this.hasBonus && this.bonusType === BonusType.MULTI_SHOT) {
+                // Create 3 bullets for multi-shot - each counts as one shot
+                GameStats.shotsFired += 2; // 2 additional shots
+                
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + this.width / 2, 
+                    y: this.y
+                }));
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + this.width / 4, 
+                    y: this.y + this.height / 3
+                }));
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + 3 * this.width / 4, 
+                    y: this.y + this.height / 3
+                }));
+            } else {
+                // Normal single shot
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + this.width / 2, 
+                    y: this.y
+                }));
+            }
+            
+            this.lastShot = now;
+            window.gameInstance.soundManager.playShoot();
+        }
+    }
+    
+    applyBonus(type) {
+        this.hasBonus = true;
+        this.bonusType = type;
+        this.bonusEndTime = Date.now() + GAME_CONFIG.bonusDuration;
+        
+        // Show message for bonus
+        this._showBonusMessage();
+    }
+    
+    _showBonusMessage() {
+        let message;
+        switch (this.bonusType) {
+            case BonusType.RAPID_FIRE:
+                message = "RAPID FIRE!";
+                break;
+            case BonusType.MULTI_SHOT:
+                message = "MULTI-SHOT!";
+                break;
+            case BonusType.BULLET_SHIELD:
+                message = "BULLET SHIELD!";
+                break;
+        }
+        
+        const messageEl = document.createElement('div');
+        messageEl.className = 'bonus-message';
+        messageEl.textContent = message;
+        document.getElementById('game-container').appendChild(messageEl);
+        
+        setTimeout(() => {
+            messageEl.classList.add('fade-out');
+            setTimeout(() => messageEl.remove(), 1000);
+        }, 2000);
+    }
+    
+    update(deltaTime) {
+        // Check if bonus has expired
+        const now = Date.now();
+        if (this.hasBonus && Date.now() > this.bonusEndTime) {
+            this.hasBonus = false;
+            this.bonusType = null;
+        }
+        
+        // Update bullets with efficient memory management
+        this.bullets = this.bullets.filter(bullet => {
+            bullet.update(deltaTime);
+            
+            if (bullet.y <= 0) {
+                window.gameInstance.bulletPool.release(bullet);
+                return false;
+            }
+            return true;
+        });
+
+        // Check for bonus expiration
+        if ((this.hasBonus && now > this.bonusEndTime) ||
+            (this.speedBoost && now > this.speedBoostEndTime)) {
+            
+            if (this.hasBonus && now > this.bonusEndTime) {
+                this.hasBonus = false;
+                this.bonusType = null;
+            }
+            
+            if (this.speedBoost && now > this.speedBoostEndTime) {
+                this.speedBoost = false;
+                this.speed = 5; // Reset to default speed
+            }
+        }
+    }
+}
+
+// Optimize Enemy class performance
+class Enemy {
+    constructor(x, y, type = 'basic') {
+        this.x = x;
+        this.y = y;
+        this.width = ENEMY_WIDTH;
+        this.height = ENEMY_HEIGHT;
+        this.speed = GAME_CONFIG.levels[0].enemySpeed; // Start with first level speed
+        this.bullets = [];
+        this.lastShot = 0;
+        this.type = type;
+        this.direction = 1; // Add direction property
+        this.shootDelay = 2000 + Math.random() * 6000; // Increase delay between shots
+        this.lastShot = Date.now() + Math.random() * 3000; // Greater offset for initial shooting
+    }
+
+    draw(ctx) {
+        switch(this.type) {
+            case 'basic':
+                this.drawBasicAlien(ctx);
+                break;
+            case 'advanced':
+                this.drawAdvancedAlien(ctx);
+                break;
+            case 'boss':
+                this.drawBossAlien(ctx);
+                break;
+        }
+    }
+
+    drawBasicAlien(ctx) {
+        // Redesigned level 1 alien - more detailed and interesting
+        
+        // Draw an oval-shaped head with green gradient
+        const headGradient = ctx.createLinearGradient(
+            this.x, this.y, 
+            this.x, this.y + this.height
+        );
+        headGradient.addColorStop(0, '#5f0');
+        headGradient.addColorStop(1, '#080');
+        ctx.fillStyle = headGradient;
+        
+        // Draw alien head
+        ctx.beginPath();
+        ctx.ellipse(
+            this.x + this.width/2, 
+            this.y + this.height/2, 
+            this.width * 0.4, 
+            this.height * 0.45, 
+            0, 0, Math.PI * 2
+        );
+        ctx.fill();
+        
+        // Draw large black eyes
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        
+        // Left eye - almond shaped
+        ctx.save();
+        ctx.translate(this.x + this.width * 0.3, this.y + this.height * 0.4);
+        ctx.scale(1, 0.6);
+        ctx.arc(0, 0, this.width * 0.15, 0, Math.PI * 2);
+        ctx.restore();
+        
+        // Right eye - almond shaped 
+        ctx.save();
+        ctx.translate(this.x + this.width * 0.7, this.y + this.height * 0.4);
+        ctx.scale(1, 0.6);
+        ctx.arc(0, 0, this.width * 0.15, 0, Math.PI * 2);
+        ctx.restore();
+        ctx.fill();
+        
+        // Draw reflective highlights in eyes
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.25, this.y + this.height * 0.38, this.width * 0.05, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width * 0.65, this.y + this.height * 0.38, this.width * 0.05, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw small mouth
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width * 0.4, this.y + this.height * 0.7);
+        ctx.lineTo(this.x + this.width * 0.6, this.y + this.height * 0.7);
+        ctx.stroke();
+        
+        // Draw antenna
+        ctx.strokeStyle = '#5f0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width/2, this.y + this.height * 0.1);
+        ctx.lineTo(this.x + this.width/2, this.y - this.height * 0.1);
+        
+        // Antenna top
+        ctx.arc(this.x + this.width/2, this.y - this.height * 0.1, this.width * 0.08, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    drawAdvancedAlien(ctx) {
+        // Draw advanced alien creature with more details
+        
+        // Main body - different color for this alien type
+        ctx.fillStyle = '#f0f'; // Purple alien
+        
+        // Draw oval body
+        ctx.beginPath();
+        ctx.ellipse(this.x + this.width/2, this.y + this.height/2, this.width*0.45, this.height*0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw multiple eyes (3 eyes for advanced alien)
+        ctx.fillStyle = '#0ff'; // Cyan eyes
+        ctx.beginPath();
+        // Left eye
+        ctx.arc(this.x + this.width*0.25, this.y + this.height*0.35, this.width*0.1, 0, Math.PI * 2);
+        // Middle eye (slightly bigger)
+        ctx.arc(this.x + this.width*0.5, this.y + this.height*0.3, this.width*0.12, 0, Math.PI * 2);
+        // Right eye
+        ctx.arc(this.x + this.width*0.75, this.y + this.height*0.35, this.width*0.1, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw pupils
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width*0.25, this.y + this.height*0.35, this.width*0.04, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width*0.5, this.y + this.height*0.3, this.width*0.05, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width*0.75, this.y + this.height*0.35, this.width*0.04, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw tentacles at bottom
+        ctx.strokeStyle = '#f0f';
+        ctx.lineWidth = 3;
+        const baseY = this.y + this.height*0.7;
+        for (let i = 0; i < 4; i++) {
+            const startX = this.x + this.width * (0.3 + i * 0.15);
+            ctx.beginPath();
+            ctx.moveTo(startX, baseY);
+            // Create wavy tentacle
+            ctx.quadraticCurveTo(
+                startX + (i % 2 ? 5 : -5), 
+                baseY + this.height*0.2, 
+                startX + (i % 2 ? 10 : -10), 
+                baseY + this.height*0.35
+            );
+            ctx.stroke();
+        }
+        
+        // Draw mouth
+        ctx.fillStyle = '#400';
+        ctx.beginPath();
+        ctx.ellipse(this.x + this.width/2, this.y + this.height*0.6, this.width*0.2, this.height*0.1, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    drawBossAlien(ctx) {
+        // Create an intimidating alien overlord with crown-like features
+        
+        // Create a metallic gradient for the boss alien
+        const bodyGradient = ctx.createLinearGradient(
+            this.x, this.y,
+            this.x, this.y + this.height
+        );
+        bodyGradient.addColorStop(0, '#f55'); // Light red
+        bodyGradient.addColorStop(0.5, '#900'); // Mid-dark red
+        bodyGradient.addColorStop(1, '#600'); // Dark red
+        
+        // Draw main body - larger and more imposing
+        ctx.fillStyle = bodyGradient;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width * 0.5, this.y + this.height * 0.15); // Top center
+        ctx.lineTo(this.x + this.width * 0.8, this.y + this.height * 0.3); // Upper right
+        ctx.lineTo(this.x + this.width * 0.9, this.y + this.height * 0.7); // Lower right
+        ctx.lineTo(this.x + this.width * 0.5, this.y + this.height * 0.9); // Bottom center
+        ctx.lineTo(this.x + this.width * 0.1, this.y + this.height * 0.7); // Lower left
+        ctx.lineTo(this.x + this.width * 0.2, this.y + this.height * 0.3); // Upper left
+        ctx.closePath();
+        ctx.fill();
+        
+        // Add armor plating details
+        ctx.strokeStyle = '#ff0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width * 0.2, this.y + this.height * 0.4);
+        ctx.lineTo(this.x + this.width * 0.8, this.y + this.height * 0.4);
+        ctx.moveTo(this.x + this.width * 0.3, this.y + this.height * 0.6);
+        ctx.lineTo(this.x + this.width * 0.7, this.y + this.height * 0.6);
+        ctx.stroke();
+        
+        // Draw crown/spikes on top
+        ctx.fillStyle = '#ff0'; // Gold crown
+        ctx.beginPath();
+        // Left spike
+        ctx.moveTo(this.x + this.width * 0.2, this.y + this.height * 0.2);
+        ctx.lineTo(this.x + this.width * 0.25, this.y - this.height * 0.1);
+        ctx.lineTo(this.x + this.width * 0.35, this.y + this.height * 0.15);
+        // Middle spike (taller)
+        ctx.moveTo(this.x + this.width * 0.4, this.y + this.height * 0.1);
+        ctx.lineTo(this.x + this.width * 0.5, this.y - this.height * 0.2);
+        ctx.lineTo(this.x + this.width * 0.6, this.y + this.height * 0.1);
+        // Right spike
+        ctx.moveTo(this.x + this.width * 0.65, this.y + this.height * 0.15);
+        ctx.lineTo(this.x + this.width * 0.75, this.y - this.height * 0.1);
+        ctx.lineTo(this.x + this.width * 0.8, this.y + this.height * 0.2);
+        ctx.fill();
+        
+        // Draw glowing eyes
+        const eyeGlow = ctx.createRadialGradient(
+            this.x + this.width * 0.35, this.y + this.height * 0.3, 0,
+            this.x + this.width * 0.35, this.y + this.height * 0.3, this.width * 0.12
+        );
+        eyeGlow.addColorStop(0, '#f00');
+        eyeGlow.addColorStop(0.7, '#f00');
+        eyeGlow.addColorStop(1, 'rgba(255, 0, 0, 0)');
+        
+        ctx.fillStyle = eyeGlow;
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.35, this.y + this.height * 0.3, this.width * 0.12, 0, Math.PI * 2);
+        ctx.fill();
+        
+        const eyeGlow2 = ctx.createRadialGradient(
+            this.x + this.width * 0.65, this.y + this.height * 0.3, 0,
+            this.x + this.width * 0.65, this.y + this.height * 0.3, this.width * 0.12
+        );
+        eyeGlow2.addColorStop(0, '#f00');
+        eyeGlow2.addColorStop(0.7, '#f00');
+        eyeGlow2.addColorStop(1, 'rgba(255, 0, 0, 0)');
+        
+        ctx.fillStyle = eyeGlow2;
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.65, this.y + this.height * 0.3, this.width * 0.12, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw solid eye centers (pupils)
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.35, this.y + this.height * 0.3, this.width * 0.05, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width * 0.65, this.y + this.height * 0.3, this.width * 0.05, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Add evil mouth with sharp teeth
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.5, this.y + this.height * 0.65, this.width * 0.25, 0, Math.PI, false);
+        ctx.fill();
+        
+        // Add teeth
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+            const toothWidth = this.width * 0.06;
+            const startX = this.x + this.width * 0.3 + (i * toothWidth);
+            
+            // Triangle teeth
+            ctx.moveTo(startX, this.y + this.height * 0.65);
+            ctx.lineTo(startX + toothWidth/2, this.y + this.height * 0.75);
+            ctx.lineTo(startX + toothWidth, this.y + this.height * 0.65);
+        }
+        ctx.fill();
+        
+        // Add pulsing effect for the boss (using current time to oscillate)
+        const pulseAmount = Math.sin(Date.now() / 200) * 0.1 + 0.9;
+        if (pulseAmount > 0.95) {
+            // Add occasional flare/glow around the boss
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.2)'; // Semi-transparent to create trails
+            ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+            
+            // Draw explosions and particles
+            for (let i = 0; i < this.explosions.length; i++) {
+                this.explosions[i].update();
+                this.explosions[i].draw(this.ctx);
+            }
+            
+            // Continue render loop if explosions are still present
+            if (this.explosions.length > 0) {
+                requestAnimationFrame(victoryRenderLoop);
+            }
+        };
+        
+        // Start the victory render loop
+        requestAnimationFrame(victoryRenderLoop);
+        
+        // Important: Update the DOM elements before continuing
+        setTimeout(() => {
+            // Update UI visibility for all device types
+            const startBtn = document.getElementById('start-button');
+            const restartBtn = document.getElementById('restart-button');
+            const muteBtn = document.getElementById('mute-button');
+            
+            // Make sure buttons are properly visible/hidden
+            if (startBtn) {
+                startBtn.classList.add('hidden');
+                console.log("Start button hidden");
+            }
+            
+            if (restartBtn) {
+                restartBtn.classList.remove('hidden');
+                console.log("Restart button shown");
+                
+                // Re-bind the event listener to ensure it works
+                restartBtn.onclick = () => {
+                    console.log("Restart button clicked");
+                    this.startGame();
+                };
+            }
+            
+            // Show device-appropriate restart instructions
+            if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
+                this.ctx.font = '24px Arial';
+                this.ctx.fillStyle = '#fff';
+                this.ctx.fillText('Tap RESTART to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.65);
+            } else {
+                this.ctx.font = '24px Arial';
+                this.ctx.fillStyle = '#fff';
+                this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.65);
+            }
+            
+            // Setup event listener for keyboard restart
+            const restartHandler = (e) => {
+                if (e.key === 'Enter') {
+                    console.log("Enter key pressed for restart");
+                    window.removeEventListener('keydown', restartHandler);
+                    this.startGame();
+                }
+            };
+            
+            window.addEventListener('keydown', restartHandler);
+            
+        }, 500); // Small delay to ensure DOM updates properly
+    }
+    
+    // Add a celebratory effect for victory
+    createVictoryExplosions() {
+        console.log("Creating victory explosions"); // Debug log
+        // Create multiple colorful explosions at random positions
+        const colors = ['#0f0', '#00f', '#f0f', '#ff0', '#0ff'];
+        
+        const createRandomExplosion = (index) => {
+            this.setTrackedTimeout(() => {
+                const x = Math.random() * GAME_CONFIG.width;
+                const y = Math.random() * (GAME_CONFIG.height * 0.7);
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x, y, color,
+                        size: 20 + Math.random() * 40
+                    })
+                );
+                console.log(`Explosion ${index} created at (${x}, ${y}) with color ${color}`); // Debug log
+                
+                if (index < 20) { // Create 20 explosions
+                    createRandomExplosion(index + 1);
+                }
+            }, 200 + Math.random() * 300); // Random delay between explosions
+        };
+        
+        createRandomExplosion(0);
+    }
+
+    // Optimize handling of game events
+    handleGameEvent(eventType, data = {}) {
+        switch(eventType) {
+            case 'playerHit':
+                // Add screen shake effect
+                this.particleSystem.addScreenShake(10, 0.3);
+                
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x: data.x,
+                        y: data.y,
+                        color: '#0f8',
+                        size: 20
+                    })
+                );
+                this.state.lives--;
+                this.updateLives();
+                this.soundManager.playPlayerHit();
+                
+                // Make player invulnerable briefly
+                this.playerInvulnerable = true;
+                this.playerInvulnerableTime = 0;
+                
+                if (this.state.lives <= 0) {
+                    this.handleGameEvent('gameOver', {reason: "You ran out of lives!"});
+                }
+                break;
+                
+            case 'enemyDestroyed':
+                // Add particle effects for enemy explosions
+                this.particleSystem.addExplosion(data.x, data.y, data.enemy.type);
+                
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x: data.x, 
+                        y: data.y,
+                        color: '#f88',
+                        size: 30
+                    })
+                );
+                this.entities.delete(data.enemy);
+                this.state.score += 10;
+                this.soundManager.playExplosion();
+                this.updateScore();
+                break;
+                
+            case 'gameOver':
+                // Final explosion
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x: this.player.x + this.player.width/2,
+                        y: this.player.y + this.player.height/2,
+                        color: '#0f0',
+                        size: 60
+                    })
+                );
+                this.gameOver(data.reason);
+                break;
+                
+            case 'levelComplete':
+                this.nextLevel();
+                break;
+                
+            case 'gameVictory':
+                this.victory();
+                break;
+        }
+    }
+
+    updateBonusShip(deltaTime) {
+        // Update existing bonus ship if present
+        if (this.bonusShip) {
+            if (!this.bonusShip.update(deltaTime)) {
+                this.bonusShip = null;
+            }
+            return;
+        }
+
+        // Random chance to spawn a bonus ship
+        if (Math.random() < GAME_CONFIG.bonusShipChance && this.state.gameState === GameState.PLAYING) {
+            this.bonusShip = new BonusShip();
+            this.soundManager.playBonusShip();
+        }
+    }
+
+    awardExtraLife() {
+        this.state.lives++;
+        this.updateLives();
+        
+        // Display a message
+        const messageEl = document.createElement('div');
+        messageEl.className = 'level-message';
+        messageEl.innerHTML = `LEVEL ${this.state.level} COMPLETE!<br>+1 LIFE`;
+        document.getElementById('game-container').appendChild(messageEl);
+        
+        // Remove after animation
+        this.setTrackedTimeout(() => {
+            messageEl.classList.add('fade-out');
+            this.setTrackedTimeout(() => messageEl.remove(), 1000);
+        }, 2000);
+    }
+
+    /**
+     * Updates the lives display in the DOM
+     */
+    updateLives() {
+        document.getElementById('lives').textContent = `Lives: ${this.state.lives}`;
+    }
+
+    /**
+     * Updates the score display in the DOM
+     */
+    updateScore() {
+        document.getElementById('score').textContent = `Score: ${this.state.score}`;
+    }
+
+    renderMenu() {
+        // Draw animated stars instead of static background
+        this.particleSystem.drawStarfield(this.ctx);
+        
+        // Add animated title with pulsing effect
+        const pulseAmount = Math.sin(Date.now() / 500) * 0.1 + 1;
+        
+        this.ctx.shadowColor = '#0f0';
+        this.ctx.shadowBlur = 15;
+        this.ctx.fillStyle = '#0f0';
+        this.ctx.font = 'bold 60px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.save();
+        this.ctx.translate(GAME_CONFIG.width/2, GAME_CONFIG.height/4);
+        this.ctx.scale(pulseAmount, pulseAmount);
+        this.ctx.fillText('SPACE INVADERS', 0, 0);
+        this.ctx.restore();
+        
+        // Draw high scores
+        this.ctx.shadowBlur = 0;
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '24px Arial';
+        this.ctx.fillText('HIGH SCORES', GAME_CONFIG.width/2, GAME_CONFIG.height/2 + 70);
+        
+        let yPos = GAME_CONFIG.height/2 + 110;
+        if (GAME_CONFIG.highScores.length === 0) {
+            this.ctx.fillText('No scores yet!', GAME_CONFIG.width/2, yPos);
+        } else {
+            GAME_CONFIG.highScores.slice(0, 5).forEach((score, index) => {
+                this.ctx.fillText(`${index + 1}. ${score.score} pts - ${score.date}`, GAME_CONFIG.width/2, yPos);
+                yPos += 30;
+            });
+        }
+        
+        // Draw device-specific instructions
+        this.ctx.font = '20px Arial';
+        if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
+            this.ctx.fillText('Slide to move, tap to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.9);
+        } else {
+            this.ctx.fillText('Press ENTER to start', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.9);
+            this.ctx.font = '16px Arial';
+            this.ctx.fillText('Controls: Arrows to move, Space to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.95);
+            this.ctx.fillText('P to pause, M to mute', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.98);
+        }
+        
+        // Update menu button visibility
+        document.getElementById('start-button').classList.remove('hidden');
+        document.getElementById('restart-button').classList.add('hidden');
+        
+        // Draw player ship with gradients as seen in-game
+        const shipX = GAME_CONFIG.width/2;
+        const shipY = GAME_CONFIG.height * 0.85;
+        const width = PLAYER_WIDTH * 1.5;
+        const height = PLAYER_HEIGHT * 1.5;
+        
+        // Draw thrust flame animation
+        const thrustSize = Math.sin(Date.now() / 100) * 5 + 10;
+        this.ctx.fillStyle = '#f80';
+        this.ctx.beginPath();
+        this.ctx.moveTo(shipX, shipY + height * 0.4);
+        this.ctx.lineTo(shipX - 8, shipY + height * 0.4 + thrustSize);
+        this.ctx.lineTo(shipX + 8, shipY + height * 0.4 + thrustSize);
+        this.ctx.closePath();
+        this.ctx.fill();
+        
+        // Draw spaceship body with gradient - same as in-game ship
+        const gradient = this.ctx.createLinearGradient(shipX - width/2, shipY - height/2, shipX - width/2, shipY + height/2);
+        gradient.addColorStop(0, '#0f0');
+        gradient.addColorStop(1, '#080');
+        this.ctx.fillStyle = gradient;
+        
+        this.ctx.beginPath();
+        this.ctx.moveTo(shipX, shipY - height/2);
+        this.ctx.lineTo(shipX + width/2, shipY + height/2);
+        this.ctx.lineTo(shipX + width * 0.3, shipY + height * 0.3);
+        this.ctx.lineTo(shipX + width * 0.1, shipY + height/2);
+        this.ctx.lineTo(shipX - width * 0.1, shipY + height/2);
+        this.ctx.lineTo(shipX - width * 0.3, shipY + height * 0.3);
+        this.ctx.lineTo(shipX - width/2, shipY + height/2);
+        this.ctx.closePath();
+        this.ctx.fill();
+        
+        // Draw cockpit with gradient
+        const cockpitGradient = this.ctx.createRadialGradient(
+            shipX, shipY - height * 0.1, 0, 
+            shipX, shipY - height * 0.1, width * 0.15
+        );
+        cockpitGradient.addColorStop(0, '#00f');
+        cockpitGradient.addColorStop(1, '#004');
+        this.ctx.fillStyle = cockpitGradient;
+        this.ctx.beginPath();
+        this.ctx.arc(shipX, shipY - height * 0.1, width * 0.15, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Display alien types
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '18px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('ENEMY TYPES', GAME_CONFIG.width/2, GAME_CONFIG.height/2 - 80);
+        
+        // Create temporary enemies to show their designs
+        const tempEnemyWidth = 40;
+        const tempEnemyHeight = 30;
+        const centerX = GAME_CONFIG.width/2;
+        const enemyY = GAME_CONFIG.height/2 - 40;
+        const spacing = 120;
+        
+        // Draw Level 1 Enemy (Basic)
+        // Green alien with oval head
+        const x1 = centerX - spacing;
+        const y1 = enemyY;
+        
+        const headGradient = this.ctx.createLinearGradient(x1, y1, x1, y1 + tempEnemyHeight);
+        headGradient.addColorStop(0, '#5f0');
+        headGradient.addColorStop(1, '#080');
+        this.ctx.fillStyle = headGradient;
+        
+        this.ctx.beginPath();
+        this.ctx.ellipse(x1 + tempEnemyWidth/2, y1 + tempEnemyHeight/2, 
+                    tempEnemyWidth * 0.4, tempEnemyHeight * 0.45, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Eyes
+        this.ctx.fillStyle = '#000';
+        this.ctx.beginPath();
+        this.ctx.save();
+        this.ctx.translate(x1 + tempEnemyWidth * 0.3, y1 + tempEnemyHeight * 0.4);
+        this.ctx.scale(1, 0.6);
+        this.ctx.arc(0, 0, tempEnemyWidth * 0.15, 0, Math.PI * 2);
+        this.ctx.restore();
+        
+        this.ctx.save();
+        this.ctx.translate(x1 + tempEnemyWidth * 0.7, y1 + tempEnemyHeight * 0.4);
+        this.ctx.scale(1, 0.6);
+        this.ctx.arc(0, 0, tempEnemyWidth * 0.15, 0, Math.PI * 2);
+        this.ctx.restore();
+        this.ctx.fill();
+        
+        // Draw Level 2 Enemy (Advanced/Purple)
+        const x2 = centerX;
+        const y2 = enemyY;
+        
+        this.ctx.fillStyle = '#f0f';
+        this.ctx.beginPath();
+        this.ctx.ellipse(x2 + tempEnemyWidth/2, y2 + tempEnemyHeight/2, 
+                    tempEnemyWidth*0.45, tempEnemyHeight*0.4, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Eyes
+        this.ctx.fillStyle = '#0ff';
+        this.ctx.beginPath();
+        this.ctx.arc(x2 + tempEnemyWidth*0.25, y2 + tempEnemyHeight*0.35, tempEnemyWidth*0.1, 0, Math.PI * 2);
+        this.ctx.arc(x2 + tempEnemyWidth*0.5, y2 + tempEnemyHeight*0.3, tempEnemyWidth*0.12, 0, Math.PI * 2);
+        this.ctx.arc(x2 + tempEnemyWidth*0.75, y2 + tempEnemyHeight*0.35, tempEnemyWidth*0.1, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Draw Level 3 Enemy (Boss/Red)
+        const x3 = centerX + spacing;
+        const y3 = enemyY;
+        
+        const bossGradient = this.ctx.createLinearGradient(x3, y3, x3, y3 + tempEnemyHeight);
+        bossGradient.addColorStop(0, '#f55');
+        bossGradient.addColorStop(0.5, '#900');
+        bossGradient.addColorStop(1, '#600');
+        
+        this.ctx.fillStyle = bossGradient;
+        this.ctx.beginPath();
+        this.ctx.moveTo(x3 + tempEnemyWidth * 0.5, y3 + tempEnemyHeight * 0.15);
+        this.ctx.lineTo(x3 + tempEnemyWidth * 0.8, y3 + tempEnemyHeight * 0.3);
+        this.ctx.lineTo(x3 + tempEnemyWidth * 0.9, y3 + tempEnemyHeight * 0.7);
+        this.ctx.lineTo(x3 + tempEnemyWidth * 0.5, y3 + tempEnemyHeight * 0.9);
+        this.ctx.lineTo(x3 + tempEnemyWidth * 0.1, y3 + tempEnemyHeight * 0.7);
+        this.ctx.lineTo(x3 + tempEnemyWidth * 0.2, y3 + tempEnemyHeight * 0.3);
+        this.ctx.closePath();
+        this.ctx.fill();
+        
+        // Eyes
+        this.ctx.fillStyle = '#f00';
+        this.ctx.beginPath();
+        this.ctx.arc(x3 + tempEnemyWidth * 0.35, y3 + tempEnemyHeight * 0.3, tempEnemyWidth * 0.12, 0, Math.PI * 2);
+        this.ctx.arc(x3 + tempEnemyWidth * 0.65, y3 + tempEnemyHeight * 0.3, tempEnemyWidth * 0.12, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Points text
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '14px Arial';
+        this.ctx.fillText('10 pts', x1, y1 + 45);
+        this.ctx.fillText('20 pts', x2, y2 + 45);
+        this.ctx.fillText('30 pts', x3, y3 + 45);
+    }
+
+    renderPauseScreen() {
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+        
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '40px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('PAUSED', GAME_CONFIG.width/2, GAME_CONFIG.height/2);
+        
+        this.ctx.font = '20px Arial';
+        this.ctx.fillText('Press P to resume', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+    }
+
+    /**
+     * Prepare the background stars texture on the offscreen canvas.
+     * This method initializes the starfield to avoid regenerating it on every frame.
+     */
+    prepareBackgroundStars() {
+        // Clear the offscreen canvas
+        this.offscreenCtx.fillStyle = '#000';
+        this.offscreenCtx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+        
+        // Generate a fixed starfield pattern
+        this.stars = [];
+        for (let i = 0; i < 100; i++) {
+            const star = {
+                x: Math.random() * GAME_CONFIG.width,
+                y: Math.random() * GAME_CONFIG.height,
+                size: 0.5 + Math.random() * 1.5, // Different star sizes
+                brightness: 0.5 + Math.random() * 0.5 // Different brightness
+            };
+            this.stars.push(star);
+            
+            // Draw each star on the offscreen canvas
+            this.offscreenCtx.fillStyle = `rgba(255,255,255,${star.brightness})`;
+            this.offscreenCtx.beginPath();
+            this.offscreenCtx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+            this.offscreenCtx.fill();
+        }
+        
+        // Add some larger brighter stars
+        for (let i = 0; i < 10; i++) {
+            const x = Math.random() * GAME_CONFIG.width;
+            const y = Math.random() * GAME_CONFIG.height;
+            const size = 1.5 + Math.random() * 1;
+            
+            // Create a gradient for the star
+            const gradient = this.offscreenCtx.createRadialGradient(x, y, 0, x, y, size * 2);
+            gradient.addColorStop(0, 'rgba(255,255,255,0.8)');
+            gradient.addColorStop(1, 'rgba(255,255,255,0)');
+            
+            this.offscreenCtx.fillStyle = gradient;
+            this.offscreenCtx.beginPath();
+            this.offscreenCtx.arc(x, y, size * 2, 0, Math.PI * 2);
+            this.offscreenCtx.fill();
+        }
+    }
+
+    drawBackground() {
+        // Simply copy the pre-rendered background
+        this.ctx.drawImage(this.offscreenCanvas, 0, 0);
+    }
+
+    gameOver(reason = "Game Over") {
+        // Cancel any pending level transition
+        this.isTransitioningLevel = false;
+        
+        this.state.gameState = GameState.GAME_OVER;
+        
+        // Clear any level transition messages
+        const existingMessages = document.querySelectorAll('.level-message');
+        existingMessages.forEach(msg => msg.remove());
+        
+        // Show game over screen
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+        
+        this.ctx.fillStyle = '#f00';
+        this.ctx.font = '40px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText(reason, GAME_CONFIG.width/2, GAME_CONFIG.height/3);
+        
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '20px Arial';
+        this.ctx.fillText(`Final Score: ${this.state.score}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2);
+        
+        // Show different restart instructions based on device
+        if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
+            document.getElementById('restart-button').classList.remove('hidden');
+            document.getElementById('start-button').classList.add('hidden');
+        } else {
+            this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+        }
+        
+        this.stop();
+        
+        // Setup event listener for restart
+        const restartHandler = (e) => {
+            if (e.key === 'Enter') {
+                window.removeEventListener('keydown', restartHandler);
+                this.startGame();
+            }
+        };
+        
+        window.addEventListener('keydown', restartHandler);
+    }
+
+    // Replace setTimeout with tracked version
+    setTrackedTimeout(callback, delay) {
+        const timeoutId = setTimeout(() => {
+            this.activeTimeouts.delete(timeoutId);
+            callback();
+        }, delay);
+        
+        this.activeTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+    
+    // Clear all active timeouts
+    clearAllTimeouts() {
+        this.activeTimeouts.forEach(id => clearTimeout(id));
+        this.activeTimeouts.clear();
+    }
+
+    // Add a new method to clean up entities between levels
+    cleanupEntities() {
+        // Keep only the player
+        const player = [...this.entities].find(e => e instanceof Player);
+        this.entities.clear();
+        
+        if (player) {
+            this.entities.add(player);
+        }
+        
+        // Clean up all bullet pools
+        this.bulletPool.releaseAll();
+    }
+
+    bindSwipeControls() {
+        if (!this.canvas) return;
+
+        const touchStart = (e) => {
+            e.preventDefault();
+            this.initAudio();
+            
+            const touch = e.touches[0];
+            this.touch.startX = touch.clientX;
+            this.touch.lastX = touch.clientX;
+            this.touch.startTime = Date.now();
+            this.touch.lastTime = Date.now();
+            this.touch.velocity = 0;
+            this.touch.isTouching = true;
+        };
+
+        const touchMove = (e) => {
+            if (!this.touch.isTouching || this.state.gameState !== GameState.PLAYING) return;
+            e.preventDefault();
+            
+            const touch = e.touches[0];
+            const now = Date.now();
+            const deltaTime = now - this.touch.lastTime;
+            if (deltaTime === 0) return;
+
+            const deltaX = touch.clientX - this.touch.lastX;
+            
+            // Calculate new velocity based on movement speed
+            const newVelocity = (deltaX / deltaTime) * 2;
+            
+            // Smooth velocity transitions
+            this.touch.velocity = 0.6 * this.touch.velocity + 0.4 * newVelocity;
+            this.touch.velocity = Math.max(-this.touch.maxVelocity, 
+                                        Math.min(this.touch.maxVelocity, this.touch.velocity));
+            
+            this.touch.lastX = touch.clientX;
+            this.touch.lastTime = now;
+        };
+
+        const touchEnd = (e) => {
+            e.preventDefault();
+            
+            // Check for tap (quick touch with minimal movement)
+            const touchDuration = Date.now() - this.touch.startTime;
+            const touch = e.changedTouches[0];
+            const moveDistance = Math.abs(touch.clientX - this.touch.startX);
+            
+            if (touchDuration < 200 && moveDistance < 10) {
+                if (this.state.gameState === GameState.PLAYING) {
+                    this.player.shoot();
+                }
+            }
+            
+            this.touch.isTouching = false;
+        };
+
+        this.canvas.addEventListener('touchstart', touchStart, { passive: false });
+        this.canvas.addEventListener('touchmove', touchMove, { passive: false });
+        this.canvas.addEventListener('touchend', touchEnd, { passive: false });
+    }
+
+    // High score management
+    loadHighScores() {
+        const savedScores = localStorage.getItem('spaceInvadersHighScores');
+        if (savedScores) {
+            GAME_CONFIG.highScores = JSON.parse(savedScores);
+        }
+    }
+    
+    saveHighScore(score) {
+        // Check if score qualifies for high scores
+        const lowestScore = GAME_CONFIG.highScores.length >= 5 ? 
+            GAME_CONFIG.highScores[GAME_CONFIG.highScores.length - 1].score : 0;
+            
+        const isHighScore = GAME_CONFIG.highScores.length < 5 || score > lowestScore;
+            
+        if (!isHighScore && GAME_CONFIG.highScores.length >= 5) {
+            // Not a high score and we already have 5 scores
+            return false;
+        }
+        
+        GAME_CONFIG.highScores.push({
+            score,
+            date: new Date().toLocaleDateString(),
+            level: this.state.level,
+            accuracy: GameStats.getAccuracy()
+        });
+        
+        // Sort and keep only top 5
+        GAME_CONFIG.highScores.sort((a, b) => b.score - a.score);
+        if (GAME_CONFIG.highScores.length > 5) {
+            GAME_CONFIG.highScores = GAME_CONFIG.highScores.slice(0, 5);
+        }
+        
+        // Save to localStorage
+        localStorage.setItem('spaceInvadersHighScores', JSON.stringify(GAME_CONFIG.highScores));
+        
+        // Return rank (position in high scores)
+        return GAME_CONFIG.highScores.findIndex(s => s.score === score) + 1;
+    }
+
+    formatTime(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${minutes}m ${secs}s`;
+    }
+
+    // Spawn power-up drops from destroyed enemies
+    spawnPowerUpDrop(x, y) {
+        const powerUp = new PowerUpDrop(x, y);
+        this.entities.add(powerUp);
+    }
+}
+
+// Add the BonusShip class (single declaration)
+class BonusShip {
+    constructor() {
+        this.width = BONUS_SHIP_WIDTH;
+        this.height = BONUS_SHIP_HEIGHT;
+        // Randomize direction
+        this.direction = Math.random() > 0.5 ? 1 : -1;
+        // Start off-screen
+        this.x = this.direction > 0 ? -this.width : GAME_CONFIG.width;
+        // Random height in top area of screen
+        this.y = 30 + Math.random() * 80;
+        // Random speed
+        this.speed = 2 + Math.random() * 2;
+        // Random bonus type
+        this.bonusType = this._getRandomBonusType();
+        this.active = true;
+    }
+    
+    _getRandomBonusType() {
+        const types = Object.values(BonusType);
+        return types[Math.floor(Math.random() * types.length)];
+    }
+    
+    draw(ctx) {
+        // Get color based on bonus type
+        let color;
+        switch (this.bonusType) {
+            case BonusType.RAPID_FIRE:
+                color = '#ff0'; // Yellow
+                break;
+            case BonusType.MULTI_SHOT:
+                color = '#f0f'; // Purple
+                break;
+            case BonusType.BULLET_SHIELD:
+                color = '#0ff'; // Cyan
+                break;
+            default:
+                color = '#fff';
+        }
+        
+        // Draw bonus ship
+        ctx.fillStyle = color;
+        
+        // Draw saucer body
+        ctx.beginPath();
+        ctx.ellipse(
+            this.x + this.width/2, 
+            this.y + this.height*0.6, 
+            this.width*0.5, 
+            this.height*0.3, 
+            0, 0, Math.PI * 2
+        );
+        ctx.fill();
+        
+        // Draw dome
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(
+            this.x + this.width/2, 
+            this.y + this.height*0.3, 
+            this.width*0.3, 
+            Math.PI, 0
+        );
+        ctx.fill();
+        
+        // Draw lights that blink
+        if (Math.floor(Date.now() / 200) % 2) {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            
+            // Three blinking lights under the ship
+            for (let i = 0; i < 3; i++) {
+                ctx.rect(
+                    this.x + this.width * (0.25 + i * 0.25) - 5,
+                    this.y + this.height * 0.8,
+                    10,
+                    5
+                );
+            }
+            ctx.fill();
+        }
+    }
+    
+    update(deltaTime) {
+        // Calculate movement based on deltaTime for consistent speed
+        const multiplier = window.gameInstance.deltaMultiplier;
+        this.x += this.direction * this.speed * multiplier;
+        
+        // Check if ship has left the screen
+        if ((this.direction > 0 && this.x > GAME_CONFIG.width) || 
+            (this.direction < 0 && this.x < -this.width)) {
+            this.active = false;
+        }
+        
+        return this.active;
+    }
+    
+    hit() {
+        // When hit by player, apply bonus and create explosion
+        const bonusType = this.bonusType;
+        
+        // Create explosion 
+        window.gameInstance.explosions.push(
+            window.gameInstance.explosionPool.get({
+                x: this.x + this.width/2,
+                y: this.y + this.height/2,
+                color: '#fff',
+                size: 40
+            })
+        );
+        
+        // Play sound first
+        window.gameInstance.soundManager.playPowerupCollect();
+        
+        // Apply the bonus with a slight delay to ensure the game state is ready
+        setTimeout(() => {
+            if (window.gameInstance && window.gameInstance.player) {
+                // Apply the bonus to the player
+                if (bonusType === BonusType.EXTRA_LIFE) {
+                    window.gameInstance.state.lives++;
+                    window.gameInstance.updateLives();
+                    // Show message
+                    const messageEl = document.createElement('div');
+                    messageEl.className = 'bonus-message';
+                    messageEl.textContent = "EXTRA LIFE!";
+                    document.getElementById('game-container').appendChild(messageEl);
+                    setTimeout(() => {
+                        messageEl.classList.add('fade-out');
+                        setTimeout(() => messageEl.remove(), 1000);
+                    }, 2000);
+                } else if (bonusType === BonusType.SPEED_BOOST) {
+                    window.gameInstance.player.speedBoost = true;
+                    window.gameInstance.player.speed = 8;
+                    window.gameInstance.player.speedBoostEndTime = Date.now() + GAME_CONFIG.bonusDuration;
+                    // Show message
+                    const messageEl = document.createElement('div');
+                    messageEl.className = 'bonus-message';
+                    messageEl.textContent = "SPEED BOOST!";
+                    document.getElementById('game-container').appendChild(messageEl);
+                    setTimeout(() => {
+                        messageEl.classList.add('fade-out');
+                        setTimeout(() => messageEl.remove(), 1000);
+                    }, 2000);
+                } else {
+                    // Standard bonuses
+                    window.gameInstance.player.applyBonus(bonusType);
+                }
+                
+                // Log bonus application for debugging
+                console.log("Applied bonus:", bonusType);
+                
+                // Update game stats
+                GameStats.powerupsCollected++;
+            }
+        }, 10);
+        
+        this.active = false;
+    }
+}
+
+// Enhance Player class with bonus functionality
+class Player {
+    constructor() {
+        this.width = PLAYER_WIDTH;
+        this.height = PLAYER_HEIGHT;
+        this.x = GAME_CONFIG.width / 2 - this.width / 2;
+        this.y = GAME_CONFIG.height - this.height - 10;
+        this.speed = 5;
+        this.bullets = [];
+        this.lastShot = 0;
+        this.shootDelay = 250; // Minimum time between shots
+        
+        // Add bonus properties
+        this.hasBonus = false;
+        this.bonusType = null;
+        this.bonusEndTime = 0;
+
+        // Add support for speed boost powerup
+        this.speedBoost = false;
+        this.speedBoostEndTime = 0;
+    }
+    
+    draw(ctx) {
+        // Change ship color based on active bonus
+        ctx.fillStyle = this.hasBonus ? this._getBonusColor() : '#0f0';
+        
+        // Draw spaceship body with gradient
+        const gradient = ctx.createLinearGradient(this.x, this.y, this.x, this.y + this.height);
+        gradient.addColorStop(0, '#0f0');
+        gradient.addColorStop(1, '#080');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width / 2, this.y);
+        ctx.lineTo(this.x + this.width, this.y + this.height);
+        ctx.lineTo(this.x + this.width * 0.8, this.y + this.height * 0.8);
+        ctx.lineTo(this.x + this.width * 0.6, this.y + this.height);
+        ctx.lineTo(this.x + this.width * 0.4, this.y + this.height);
+        ctx.lineTo(this.x + this.width * 0.2, this.y + this.height * 0.8);
+        ctx.lineTo(this.x, this.y + this.height);
+        ctx.closePath();
+        ctx.fill();
+
+        // Draw cockpit with gradient
+        const cockpitGradient = ctx.createRadialGradient(this.x + this.width / 2, this.y + this.height * 0.4, 0, this.x + this.width / 2, this.y + this.height * 0.4, this.width * 0.15);
+        cockpitGradient.addColorStop(0, '#00f');
+        cockpitGradient.addColorStop(1, '#004');
+        ctx.fillStyle = cockpitGradient;
+        ctx.beginPath();
+        ctx.arc(this.x + this.width / 2, this.y + this.height * 0.4, this.width * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw shield if bullet shield bonus is active
+        if (this.hasBonus && this.bonusType === BonusType.BULLET_SHIELD) {
+            ctx.strokeStyle = '#0ff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(this.x + this.width/2, this.y + this.height/2, this.width * 0.8, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        // Draw bullets
+        this.bullets.forEach(bullet => bullet.draw(ctx));
+    }
+    
+    _getBonusColor() {
+        switch (this.bonusType) {
+            case BonusType.RAPID_FIRE:
+                return '#ff0'; // Yellow for rapid fire
+            case BonusType.MULTI_SHOT:
+                return '#f0f'; // Purple for multi-shot
+            case BonusType.BULLET_SHIELD:
+                return '#0ff'; // Cyan for bullet shield
+            default:
+                return '#0f0';
+        }
+    }
+    
+    move(direction) {
+        this.x = Math.max(0, Math.min(GAME_CONFIG.width - this.width, this.x + direction * this.speed));
+    }
+
+    shoot() {
+        const now = Date.now();
+        // Get current shoot delay (reduced if rapid fire bonus is active)
+        const currentDelay = this.hasBonus && this.bonusType === BonusType.RAPID_FIRE ? 
+                           this.shootDelay / 3 : this.shootDelay;
+        
+        if (now - this.lastShot >= currentDelay) {
+            // Track shots fired when shooting, not when checking collisions
+            GameStats.shotsFired++;
+            
+            // Normal shot or multi-shot based on bonus
+            if (this.hasBonus && this.bonusType === BonusType.MULTI_SHOT) {
+                // Create 3 bullets for multi-shot - each counts as one shot
+                GameStats.shotsFired += 2; // 2 additional shots
+                
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + this.width / 2, 
+                    y: this.y
+                }));
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + this.width / 4, 
+                    y: this.y + this.height / 3
+                }));
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + 3 * this.width / 4, 
+                    y: this.y + this.height / 3
+                }));
+            } else {
+                // Normal single shot
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + this.width / 2, 
+                    y: this.y
+                }));
+            }
+            
+            this.lastShot = now;
+            window.gameInstance.soundManager.playShoot();
+        }
+    }
+    
+    applyBonus(type) {
+        this.hasBonus = true;
+        this.bonusType = type;
+        this.bonusEndTime = Date.now() + GAME_CONFIG.bonusDuration;
+        
+        // Show message for bonus
+        this._showBonusMessage();
+    }
+    
+    _showBonusMessage() {
+        let message;
+        switch (this.bonusType) {
+            case BonusType.RAPID_FIRE:
+                message = "RAPID FIRE!";
+                break;
+            case BonusType.MULTI_SHOT:
+                message = "MULTI-SHOT!";
+                break;
+            case BonusType.BULLET_SHIELD:
+                message = "BULLET SHIELD!";
+                break;
+        }
+        
+        const messageEl = document.createElement('div');
+        messageEl.className = 'bonus-message';
+        messageEl.textContent = message;
+        document.getElementById('game-container').appendChild(messageEl);
+        
+        setTimeout(() => {
+            messageEl.classList.add('fade-out');
+            setTimeout(() => messageEl.remove(), 1000);
+        }, 2000);
+    }
+    
+    update(deltaTime) {
+        // Check if bonus has expired
+        const now = Date.now();
+        if (this.hasBonus && Date.now() > this.bonusEndTime) {
+            this.hasBonus = false;
+            this.bonusType = null;
+        }
+        
+        // Update bullets with efficient memory management
+        this.bullets = this.bullets.filter(bullet => {
+            bullet.update(deltaTime);
+            
+            if (bullet.y <= 0) {
+                window.gameInstance.bulletPool.release(bullet);
+                return false;
+            }
+            return true;
+        });
+
+        // Check for bonus expiration
+        if ((this.hasBonus && now > this.bonusEndTime) ||
+            (this.speedBoost && now > this.speedBoostEndTime)) {
+            
+            if (this.hasBonus && now > this.bonusEndTime) {
+                this.hasBonus = false;
+                this.bonusType = null;
+            }
+            
+            if (this.speedBoost && now > this.speedBoostEndTime) {
+                this.speedBoost = false;
+                this.speed = 5; // Reset to default speed
+            }
+        }
+    }
+}
+
+// Optimize Enemy class performance
+class Enemy {
+    constructor(x, y, type = 'basic') {
+        this.x = x;
+        this.y = y;
+        this.width = ENEMY_WIDTH;
+        this.height = ENEMY_HEIGHT;
+        this.speed = GAME_CONFIG.levels[0].enemySpeed; // Start with first level speed
+        this.bullets = [];
+        this.lastShot = 0;
+        this.type = type;
+        this.direction = 1; // Add direction property
+        this.shootDelay = 2000 + Math.random() * 6000; // Increase delay between shots
+        this.lastShot = Date.now() + Math.random() * 3000; // Greater offset for initial shooting
+    }
+
+    draw(ctx) {
+        switch(this.type) {
+            case 'basic':
+                this.drawBasicAlien(ctx);
+                break;
+            case 'advanced':
+                this.drawAdvancedAlien(ctx);
+                break;
+            case 'boss':
+                this.drawBossAlien(ctx);
+                break;
+        }
+    }
+
+    drawBasicAlien(ctx) {
+        // Redesigned level 1 alien - more detailed and interesting
+        
+        // Draw an oval-shaped head with green gradient
+        const headGradient = ctx.createLinearGradient(
+            this.x, this.y, 
+            this.x, this.y + this.height
+        );
+        headGradient.addColorStop(0, '#5f0');
+        headGradient.addColorStop(1, '#080');
+        ctx.fillStyle = headGradient;
+        
+        // Draw alien head
+        ctx.beginPath();
+        ctx.ellipse(
+            this.x + this.width/2, 
+            this.y + this.height/2, 
+            this.width * 0.4, 
+            this.height * 0.45, 
+            0, 0, Math.PI * 2
+        );
+        ctx.fill();
+        
+        // Draw large black eyes
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        
+        // Left eye - almond shaped
+        ctx.save();
+        ctx.translate(this.x + this.width * 0.3, this.y + this.height * 0.4);
+        ctx.scale(1, 0.6);
+        ctx.arc(0, 0, this.width * 0.15, 0, Math.PI * 2);
+        ctx.restore();
+        
+        // Right eye - almond shaped 
+        ctx.save();
+        ctx.translate(this.x + this.width * 0.7, this.y + this.height * 0.4);
+        ctx.scale(1, 0.6);
+        ctx.arc(0, 0, this.width * 0.15, 0, Math.PI * 2);
+        ctx.restore();
+        ctx.fill();
+        
+        // Draw reflective highlights in eyes
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.25, this.y + this.height * 0.38, this.width * 0.05, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width * 0.65, this.y + this.height * 0.38, this.width * 0.05, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw small mouth
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width * 0.4, this.y + this.height * 0.7);
+        ctx.lineTo(this.x + this.width * 0.6, this.y + this.height * 0.7);
+        ctx.stroke();
+        
+        // Draw antenna
+        ctx.strokeStyle = '#5f0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width/2, this.y + this.height * 0.1);
+        ctx.lineTo(this.x + this.width/2, this.y - this.height * 0.1);
+        
+        // Antenna top
+        ctx.arc(this.x + this.width/2, this.y - this.height * 0.1, this.width * 0.08, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    drawAdvancedAlien(ctx) {
+        // Draw advanced alien creature with more details
+        
+        // Main body - different color for this alien type
+        ctx.fillStyle = '#f0f'; // Purple alien
+        
+        // Draw oval body
+        ctx.beginPath();
+        ctx.ellipse(this.x + this.width/2, this.y + this.height/2, this.width*0.45, this.height*0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw multiple eyes (3 eyes for advanced alien)
+        ctx.fillStyle = '#0ff'; // Cyan eyes
+        ctx.beginPath();
+        // Left eye
+        ctx.arc(this.x + this.width*0.25, this.y + this.height*0.35, this.width*0.1, 0, Math.PI * 2);
+        // Middle eye (slightly bigger)
+        ctx.arc(this.x + this.width*0.5, this.y + this.height*0.3, this.width*0.12, 0, Math.PI * 2);
+        // Right eye
+        ctx.arc(this.x + this.width*0.75, this.y + this.height*0.35, this.width*0.1, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw pupils
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width*0.25, this.y + this.height*0.35, this.width*0.04, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width*0.5, this.y + this.height*0.3, this.width*0.05, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width*0.75, this.y + this.height*0.35, this.width*0.04, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw tentacles at bottom
+        ctx.strokeStyle = '#f0f';
+        ctx.lineWidth = 3;
+        const baseY = this.y + this.height*0.7;
+        for (let i = 0; i < 4; i++) {
+            const startX = this.x + this.width * (0.3 + i * 0.15);
+            ctx.beginPath();
+            ctx.moveTo(startX, baseY);
+            // Create wavy tentacle
+            ctx.quadraticCurveTo(
+                startX + (i % 2 ? 5 : -5), 
+                baseY + this.height*0.2, 
+                startX + (i % 2 ? 10 : -10), 
+                baseY + this.height*0.35
+            );
+            ctx.stroke();
+        }
+        
+        // Draw mouth
+        ctx.fillStyle = '#400';
+        ctx.beginPath();
+        ctx.ellipse(this.x + this.width/2, this.y + this.height*0.6, this.width*0.2, this.height*0.1, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    drawBossAlien(ctx) {
+        // Create an intimidating alien overlord with crown-like features
+        
+        // Create a metallic gradient for the boss alien
+        const bodyGradient = ctx.createLinearGradient(
+            this.x, this.y,
+            this.x, this.y + this.height
+        );
+        bodyGradient.addColorStop(0, '#f55'); // Light red
+        bodyGradient.addColorStop(0.5, '#900'); // Mid-dark red
+        bodyGradient.addColorStop(1, '#600'); // Dark red
+        
+        // Draw main body - larger and more imposing
+        ctx.fillStyle = bodyGradient;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width * 0.5, this.y + this.height * 0.15); // Top center
+        ctx.lineTo(this.x + this.width * 0.8, this.y + this.height * 0.3); // Upper right
+        ctx.lineTo(this.x + this.width * 0.9, this.y + this.height * 0.7); // Lower right
+        ctx.lineTo(this.x + this.width * 0.5, this.y + this.height * 0.9); // Bottom center
+        ctx.lineTo(this.x + this.width * 0.1, this.y + this.height * 0.7); // Lower left
+        ctx.lineTo(this.x + this.width * 0.2, this.y + this.height * 0.3); // Upper left
+        ctx.closePath();
+        ctx.fill();
+        
+        // Add armor plating details
+        ctx.strokeStyle = '#ff0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width * 0.2, this.y + this.height * 0.4);
+        ctx.lineTo(this.x + this.width * 0.8, this.y + this.height * 0.4);
+        ctx.moveTo(this.x + this.width * 0.3, this.y + this.height * 0.6);
+        ctx.lineTo(this.x + this.width * 0.7, this.y + this.height * 0.6);
+        ctx.stroke();
+        
+        // Draw crown/spikes on top
+        ctx.fillStyle = '#ff0'; // Gold crown
+        ctx.beginPath();
+        // Left spike
+        ctx.moveTo(this.x + this.width * 0.2, this.y + this.height * 0.2);
+        ctx.lineTo(this.x + this.width * 0.25, this.y - this.height * 0.1);
+        ctx.lineTo(this.x + this.width * 0.35, this.y + this.height * 0.15);
+        // Middle spike (taller)
+        ctx.moveTo(this.x + this.width * 0.4, this.y + this.height * 0.1);
+        ctx.lineTo(this.x + this.width * 0.5, this.y - this.height * 0.2);
+        ctx.lineTo(this.x + this.width * 0.6, this.y + this.height * 0.1);
+        // Right spike
+        ctx.moveTo(this.x + this.width * 0.65, this.y + this.height * 0.15);
+        ctx.lineTo(this.x + this.width * 0.75, this.y - this.height * 0.1);
+        ctx.lineTo(this.x + this.width * 0.8, this.y + this.height * 0.2);
+        ctx.fill();
+        
+        // Draw glowing eyes
+        const eyeGlow = ctx.createRadialGradient(
+            this.x + this.width * 0.35, this.y + this.height * 0.3, 0,
+            this.x + this.width * 0.35, this.y + this.height * 0.3, this.width * 0.12
+        );
+        eyeGlow.addColorStop(0, '#f00');
+        eyeGlow.addColorStop(0.7, '#f00');
+        eyeGlow.addColorStop(1, 'rgba(255, 0, 0, 0)');
+        
+        ctx.fillStyle = eyeGlow;
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.35, this.y + this.height * 0.3, this.width * 0.12, 0, Math.PI * 2);
+        ctx.fill();
+        
+        const eyeGlow2 = ctx.createRadialGradient(
+            this.x + this.width * 0.65, this.y + this.height * 0.3, 0,
+            this.x + this.width * 0.65, this.y + this.height * 0.3, this.width * 0.12
+        );
+        eyeGlow2.addColorStop(0, '#f00');
+        eyeGlow2.addColorStop(0.7, '#f00');
+        eyeGlow2.addColorStop(1, 'rgba(255, 0, 0, 0)');
+        
+        ctx.fillStyle = eyeGlow2;
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.65, this.y + this.height * 0.3, this.width * 0.12, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw solid eye centers (pupils)
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.35, this.y + this.height * 0.3, this.width * 0.05, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width * 0.65, this.y + this.height * 0.3, this.width * 0.05, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Add evil mouth with sharp teeth
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.5, this.y + this.height * 0.65, this.width * 0.25, 0, Math.PI, false);
+        ctx.fill();
+        
+        // Add teeth
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+            const toothWidth = this.width * 0.06;
+            const startX = this.x + this.width * 0.3 + (i * toothWidth);
+            
+            // Triangle teeth
+            ctx.moveTo(startX, this.y + this.height * 0.65);
+            ctx.lineTo(startX + toothWidth/2, this.y + this.height * 0.75);
+            ctx.lineTo(startX + toothWidth, this.y + this.height * 0.65);
+        }
+        ctx.fill();
+        
+        // Add pulsing effect for the boss (using current time to oscillate)
+        const pulseAmount = Math.sin(Date.now() / 200) * 0.1 + 0.9;
+        if (pulseAmount > 0.95) {
+            // Add occasional flare/glow around the boss
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.2)'; // Semi-transparent to create trails
+            ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+            
+            // Draw explosions and particles
+            for (let i = 0; i < this.explosions.length; i++) {
+                this.explosions[i].update();
+                this.explosions[i].draw(this.ctx);
+            }
+            
+            // Continue render loop if explosions are still present
+            if (this.explosions.length > 0) {
+                requestAnimationFrame(victoryRenderLoop);
+            }
+        };
+        
+        // Start the victory render loop
+        requestAnimationFrame(victoryRenderLoop);
+        
+        // Important: Update the DOM elements before continuing
+        setTimeout(() => {
+            // Update UI visibility for all device types
+            const startBtn = document.getElementById('start-button');
+            const restartBtn = document.getElementById('restart-button');
+            const muteBtn = document.getElementById('mute-button');
+            
+            // Make sure buttons are properly visible/hidden
+            if (startBtn) {
+                startBtn.classList.add('hidden');
+                console.log("Start button hidden");
+            }
+            
+            if (restartBtn) {
+                restartBtn.classList.remove('hidden');
+                console.log("Restart button shown");
+                
+                // Re-bind the event listener to ensure it works
+                restartBtn.onclick = () => {
+                    console.log("Restart button clicked");
+                    this.startGame();
+                };
+            }
+            
+            // Show device-appropriate restart instructions
+            if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
+                this.ctx.font = '24px Arial';
+                this.ctx.fillStyle = '#fff';
+                this.ctx.fillText('Tap RESTART to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.65);
+            } else {
+                this.ctx.font = '24px Arial';
+                this.ctx.fillStyle = '#fff';
+                this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.65);
+            }
+            
+            // Setup event listener for keyboard restart
+            const restartHandler = (e) => {
+                if (e.key === 'Enter') {
+                    console.log("Enter key pressed for restart");
+                    window.removeEventListener('keydown', restartHandler);
+                    this.startGame();
+                }
+            };
+            
+            window.addEventListener('keydown', restartHandler);
+            
+        }, 500); // Small delay to ensure DOM updates properly
+    }
+    
+    // Add a celebratory effect for victory
+    createVictoryExplosions() {
+        console.log("Creating victory explosions"); // Debug log
+        // Create multiple colorful explosions at random positions
+        const colors = ['#0f0', '#00f', '#f0f', '#ff0', '#0ff'];
+        
+        const createRandomExplosion = (index) => {
+            this.setTrackedTimeout(() => {
+                const x = Math.random() * GAME_CONFIG.width;
+                const y = Math.random() * (GAME_CONFIG.height * 0.7);
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x, y, color,
+                        size: 20 + Math.random() * 40
+                    })
+                );
+                console.log(`Explosion ${index} created at (${x}, ${y}) with color ${color}`); // Debug log
+                
+                if (index < 20) { // Create 20 explosions
+                    createRandomExplosion(index + 1);
+                }
+            }, 200 + Math.random() * 300); // Random delay between explosions
+        };
+        
+        createRandomExplosion(0);
+    }
+
+    // Optimize handling of game events
+    handleGameEvent(eventType, data = {}) {
+        switch(eventType) {
+            case 'playerHit':
+                // Add screen shake effect
+                this.particleSystem.addScreenShake(10, 0.3);
+                
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x: data.x,
+                        y: data.y,
+                        color: '#0f8',
+                        size: 20
+                    })
+                );
+                this.state.lives--;
+                this.updateLives();
+                this.soundManager.playPlayerHit();
+                
+                // Make player invulnerable briefly
+                this.playerInvulnerable = true;
+                this.playerInvulnerableTime = 0;
+                
+                if (this.state.lives <= 0) {
+                    this.handleGameEvent('gameOver', {reason: "You ran out of lives!"});
+                }
+                break;
+                
+            case 'enemyDestroyed':
+                // Add particle effects for enemy explosions
+                this.particleSystem.addExplosion(data.x, data.y, data.enemy.type);
+                
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x: data.x, 
+                        y: data.y,
+                        color: '#f88',
+                        size: 30
+                    })
+                );
+                this.entities.delete(data.enemy);
+                this.state.score += 10;
+                this.soundManager.playExplosion();
+                this.updateScore();
+                break;
+                
+            case 'gameOver':
+                // Final explosion
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x: this.player.x + this.player.width/2,
+                        y: this.player.y + this.player.height/2,
+                        color: '#0f0',
+                        size: 60
+                    })
+                );
+                this.gameOver(data.reason);
+                break;
+                
+            case 'levelComplete':
+                this.nextLevel();
+                break;
+                
+            case 'gameVictory':
+                this.victory();
+                break;
+        }
+    }
+
+    updateBonusShip(deltaTime) {
+        // Update existing bonus ship if present
+        if (this.bonusShip) {
+            if (!this.bonusShip.update(deltaTime)) {
+                this.bonusShip = null;
+            }
+            return;
+        }
+
+        // Random chance to spawn a bonus ship
+        if (Math.random() < GAME_CONFIG.bonusShipChance && this.state.gameState === GameState.PLAYING) {
+            this.bonusShip = new BonusShip();
+            this.soundManager.playBonusShip();
+        }
+    }
+
+    awardExtraLife() {
+        this.state.lives++;
+        this.updateLives();
+        
+        // Display a message
+        const messageEl = document.createElement('div');
+        messageEl.className = 'level-message';
+        messageEl.innerHTML = `LEVEL ${this.state.level} COMPLETE!<br>+1 LIFE`;
+        document.getElementById('game-container').appendChild(messageEl);
+        
+        // Remove after animation
+        this.setTrackedTimeout(() => {
+            messageEl.classList.add('fade-out');
+            this.setTrackedTimeout(() => messageEl.remove(), 1000);
+        }, 2000);
+    }
+
+    /**
+     * Updates the lives display in the DOM
+     */
+    updateLives() {
+        document.getElementById('lives').textContent = `Lives: ${this.state.lives}`;
+    }
+
+    /**
+     * Updates the score display in the DOM
+     */
+    updateScore() {
+        document.getElementById('score').textContent = `Score: ${this.state.score}`;
+    }
+
+    renderMenu() {
+        // Draw animated stars instead of static background
+        this.particleSystem.drawStarfield(this.ctx);
+        
+        // Add animated title with pulsing effect
+        const pulseAmount = Math.sin(Date.now() / 500) * 0.1 + 1;
+        
+        this.ctx.shadowColor = '#0f0';
+        this.ctx.shadowBlur = 15;
+        this.ctx.fillStyle = '#0f0';
+        this.ctx.font = 'bold 60px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.save();
+        this.ctx.translate(GAME_CONFIG.width/2, GAME_CONFIG.height/4);
+        this.ctx.scale(pulseAmount, pulseAmount);
+        this.ctx.fillText('SPACE INVADERS', 0, 0);
+        this.ctx.restore();
+        
+        // Draw high scores
+        this.ctx.shadowBlur = 0;
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '24px Arial';
+        this.ctx.fillText('HIGH SCORES', GAME_CONFIG.width/2, GAME_CONFIG.height/2 + 70);
+        
+        let yPos = GAME_CONFIG.height/2 + 110;
+        if (GAME_CONFIG.highScores.length === 0) {
+            this.ctx.fillText('No scores yet!', GAME_CONFIG.width/2, yPos);
+        } else {
+            GAME_CONFIG.highScores.slice(0, 5).forEach((score, index) => {
+                this.ctx.fillText(`${index + 1}. ${score.score} pts - ${score.date}`, GAME_CONFIG.width/2, yPos);
+                yPos += 30;
+            });
+        }
+        
+        // Draw device-specific instructions
+        this.ctx.font = '20px Arial';
+        if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
+            this.ctx.fillText('Slide to move, tap to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.9);
+        } else {
+            this.ctx.fillText('Press ENTER to start', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.9);
+            this.ctx.font = '16px Arial';
+            this.ctx.fillText('Controls: Arrows to move, Space to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.95);
+            this.ctx.fillText('P to pause, M to mute', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.98);
+        }
+        
+        // Update menu button visibility
+        document.getElementById('start-button').classList.remove('hidden');
+        document.getElementById('restart-button').classList.add('hidden');
+        
+        // Draw player ship with gradients as seen in-game
+        const shipX = GAME_CONFIG.width/2;
+        const shipY = GAME_CONFIG.height * 0.85;
+        const width = PLAYER_WIDTH * 1.5;
+        const height = PLAYER_HEIGHT * 1.5;
+        
+        // Draw thrust flame animation
+        const thrustSize = Math.sin(Date.now() / 100) * 5 + 10;
+        this.ctx.fillStyle = '#f80';
+        this.ctx.beginPath();
+        this.ctx.moveTo(shipX, shipY + height * 0.4);
+        this.ctx.lineTo(shipX - 8, shipY + height * 0.4 + thrustSize);
+        this.ctx.lineTo(shipX + 8, shipY + height * 0.4 + thrustSize);
+        this.ctx.closePath();
+        this.ctx.fill();
+        
+        // Draw spaceship body with gradient - same as in-game ship
+        const gradient = this.ctx.createLinearGradient(shipX - width/2, shipY - height/2, shipX - width/2, shipY + height/2);
+        gradient.addColorStop(0, '#0f0');
+        gradient.addColorStop(1, '#080');
+        this.ctx.fillStyle = gradient;
+        
+        this.ctx.beginPath();
+        this.ctx.moveTo(shipX, shipY - height/2);
+        this.ctx.lineTo(shipX + width/2, shipY + height/2);
+        this.ctx.lineTo(shipX + width * 0.3, shipY + height * 0.3);
+        this.ctx.lineTo(shipX + width * 0.1, shipY + height/2);
+        this.ctx.lineTo(shipX - width * 0.1, shipY + height/2);
+        this.ctx.lineTo(shipX - width * 0.3, shipY + height * 0.3);
+        this.ctx.lineTo(shipX - width/2, shipY + height/2);
+        this.ctx.closePath();
+        this.ctx.fill();
+        
+        // Draw cockpit with gradient
+        const cockpitGradient = this.ctx.createRadialGradient(
+            shipX, shipY - height * 0.1, 0, 
+            shipX, shipY - height * 0.1, width * 0.15
+        );
+        cockpitGradient.addColorStop(0, '#00f');
+        cockpitGradient.addColorStop(1, '#004');
+        this.ctx.fillStyle = cockpitGradient;
+        this.ctx.beginPath();
+        this.ctx.arc(shipX, shipY - height * 0.1, width * 0.15, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Display alien types
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '18px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('ENEMY TYPES', GAME_CONFIG.width/2, GAME_CONFIG.height/2 - 80);
+        
+        // Create temporary enemies to show their designs
+        const tempEnemyWidth = 40;
+        const tempEnemyHeight = 30;
+        const centerX = GAME_CONFIG.width/2;
+        const enemyY = GAME_CONFIG.height/2 - 40;
+        const spacing = 120;
+        
+        // Draw Level 1 Enemy (Basic)
+        // Green alien with oval head
+        const x1 = centerX - spacing;
+        const y1 = enemyY;
+        
+        const headGradient = this.ctx.createLinearGradient(x1, y1, x1, y1 + tempEnemyHeight);
+        headGradient.addColorStop(0, '#5f0');
+        headGradient.addColorStop(1, '#080');
+        this.ctx.fillStyle = headGradient;
+        
+        this.ctx.beginPath();
+        this.ctx.ellipse(x1 + tempEnemyWidth/2, y1 + tempEnemyHeight/2, 
+                    tempEnemyWidth * 0.4, tempEnemyHeight * 0.45, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Eyes
+        this.ctx.fillStyle = '#000';
+        this.ctx.beginPath();
+        this.ctx.save();
+        this.ctx.translate(x1 + tempEnemyWidth * 0.3, y1 + tempEnemyHeight * 0.4);
+        this.ctx.scale(1, 0.6);
+        this.ctx.arc(0, 0, tempEnemyWidth * 0.15, 0, Math.PI * 2);
+        this.ctx.restore();
+        
+        this.ctx.save();
+        this.ctx.translate(x1 + tempEnemyWidth * 0.7, y1 + tempEnemyHeight * 0.4);
+        this.ctx.scale(1, 0.6);
+        this.ctx.arc(0, 0, tempEnemyWidth * 0.15, 0, Math.PI * 2);
+        this.ctx.restore();
+        this.ctx.fill();
+        
+        // Draw Level 2 Enemy (Advanced/Purple)
+        const x2 = centerX;
+        const y2 = enemyY;
+        
+        this.ctx.fillStyle = '#f0f';
+        this.ctx.beginPath();
+        this.ctx.ellipse(x2 + tempEnemyWidth/2, y2 + tempEnemyHeight/2, 
+                    tempEnemyWidth*0.45, tempEnemyHeight*0.4, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Eyes
+        this.ctx.fillStyle = '#0ff';
+        this.ctx.beginPath();
+        this.ctx.arc(x2 + tempEnemyWidth*0.25, y2 + tempEnemyHeight*0.35, tempEnemyWidth*0.1, 0, Math.PI * 2);
+        this.ctx.arc(x2 + tempEnemyWidth*0.5, y2 + tempEnemyHeight*0.3, tempEnemyWidth*0.12, 0, Math.PI * 2);
+        this.ctx.arc(x2 + tempEnemyWidth*0.75, y2 + tempEnemyHeight*0.35, tempEnemyWidth*0.1, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Draw Level 3 Enemy (Boss/Red)
+        const x3 = centerX + spacing;
+        const y3 = enemyY;
+        
+        const bossGradient = this.ctx.createLinearGradient(x3, y3, x3, y3 + tempEnemyHeight);
+        bossGradient.addColorStop(0, '#f55');
+        bossGradient.addColorStop(0.5, '#900');
+        bossGradient.addColorStop(1, '#600');
+        
+        this.ctx.fillStyle = bossGradient;
+        this.ctx.beginPath();
+        this.ctx.moveTo(x3 + tempEnemyWidth * 0.5, y3 + tempEnemyHeight * 0.15);
+        this.ctx.lineTo(x3 + tempEnemyWidth * 0.8, y3 + tempEnemyHeight * 0.3);
+        this.ctx.lineTo(x3 + tempEnemyWidth * 0.9, y3 + tempEnemyHeight * 0.7);
+        this.ctx.lineTo(x3 + tempEnemyWidth * 0.5, y3 + tempEnemyHeight * 0.9);
+        this.ctx.lineTo(x3 + tempEnemyWidth * 0.1, y3 + tempEnemyHeight * 0.7);
+        this.ctx.lineTo(x3 + tempEnemyWidth * 0.2, y3 + tempEnemyHeight * 0.3);
+        this.ctx.closePath();
+        this.ctx.fill();
+        
+        // Eyes
+        this.ctx.fillStyle = '#f00';
+        this.ctx.beginPath();
+        this.ctx.arc(x3 + tempEnemyWidth * 0.35, y3 + tempEnemyHeight * 0.3, tempEnemyWidth * 0.12, 0, Math.PI * 2);
+        this.ctx.arc(x3 + tempEnemyWidth * 0.65, y3 + tempEnemyHeight * 0.3, tempEnemyWidth * 0.12, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Points text
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '14px Arial';
+        this.ctx.fillText('10 pts', x1, y1 + 45);
+        this.ctx.fillText('20 pts', x2, y2 + 45);
+        this.ctx.fillText('30 pts', x3, y3 + 45);
+    }
+
+    renderPauseScreen() {
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+        
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '40px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('PAUSED', GAME_CONFIG.width/2, GAME_CONFIG.height/2);
+        
+        this.ctx.font = '20px Arial';
+        this.ctx.fillText('Press P to resume', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+    }
+
+    /**
+     * Prepare the background stars texture on the offscreen canvas.
+     * This method initializes the starfield to avoid regenerating it on every frame.
+     */
+    prepareBackgroundStars() {
+        // Clear the offscreen canvas
+        this.offscreenCtx.fillStyle = '#000';
+        this.offscreenCtx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+        
+        // Generate a fixed starfield pattern
+        this.stars = [];
+        for (let i = 0; i < 100; i++) {
+            const star = {
+                x: Math.random() * GAME_CONFIG.width,
+                y: Math.random() * GAME_CONFIG.height,
+                size: 0.5 + Math.random() * 1.5, // Different star sizes
+                brightness: 0.5 + Math.random() * 0.5 // Different brightness
+            };
+            this.stars.push(star);
+            
+            // Draw each star on the offscreen canvas
+            this.offscreenCtx.fillStyle = `rgba(255,255,255,${star.brightness})`;
+            this.offscreenCtx.beginPath();
+            this.offscreenCtx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+            this.offscreenCtx.fill();
+        }
+        
+        // Add some larger brighter stars
+        for (let i = 0; i < 10; i++) {
+            const x = Math.random() * GAME_CONFIG.width;
+            const y = Math.random() * GAME_CONFIG.height;
+            const size = 1.5 + Math.random() * 1;
+            
+            // Create a gradient for the star
+            const gradient = this.offscreenCtx.createRadialGradient(x, y, 0, x, y, size * 2);
+            gradient.addColorStop(0, 'rgba(255,255,255,0.8)');
+            gradient.addColorStop(1, 'rgba(255,255,255,0)');
+            
+            this.offscreenCtx.fillStyle = gradient;
+            this.offscreenCtx.beginPath();
+            this.offscreenCtx.arc(x, y, size * 2, 0, Math.PI * 2);
+            this.offscreenCtx.fill();
+        }
+    }
+
+    drawBackground() {
+        // Simply copy the pre-rendered background
+        this.ctx.drawImage(this.offscreenCanvas, 0, 0);
+    }
+
+    gameOver(reason = "Game Over") {
+        // Cancel any pending level transition
+        this.isTransitioningLevel = false;
+        
+        this.state.gameState = GameState.GAME_OVER;
+        
+        // Clear any level transition messages
+        const existingMessages = document.querySelectorAll('.level-message');
+        existingMessages.forEach(msg => msg.remove());
+        
+        // Show game over screen
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+        
+        this.ctx.fillStyle = '#f00';
+        this.ctx.font = '40px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText(reason, GAME_CONFIG.width/2, GAME_CONFIG.height/3);
+        
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '20px Arial';
+        this.ctx.fillText(`Final Score: ${this.state.score}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2);
+        
+        // Show different restart instructions based on device
+        if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
+            document.getElementById('restart-button').classList.remove('hidden');
+            document.getElementById('start-button').classList.add('hidden');
+        } else {
+            this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
+        }
+        
+        this.stop();
+        
+        // Setup event listener for restart
+        const restartHandler = (e) => {
+            if (e.key === 'Enter') {
+                window.removeEventListener('keydown', restartHandler);
+                this.startGame();
+            }
+        };
+        
+        window.addEventListener('keydown', restartHandler);
+    }
+
+    // Replace setTimeout with tracked version
+    setTrackedTimeout(callback, delay) {
+        const timeoutId = setTimeout(() => {
+            this.activeTimeouts.delete(timeoutId);
+            callback();
+        }, delay);
+        
+        this.activeTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+    
+    // Clear all active timeouts
+    clearAllTimeouts() {
+        this.activeTimeouts.forEach(id => clearTimeout(id));
+        this.activeTimeouts.clear();
+    }
+
+    // Add a new method to clean up entities between levels
+    cleanupEntities() {
+        // Keep only the player
+        const player = [...this.entities].find(e => e instanceof Player);
+        this.entities.clear();
+        
+        if (player) {
+            this.entities.add(player);
+        }
+        
+        // Clean up all bullet pools
+        this.bulletPool.releaseAll();
+    }
+
+    bindSwipeControls() {
+        if (!this.canvas) return;
+
+        const touchStart = (e) => {
+            e.preventDefault();
+            this.initAudio();
+            
+            const touch = e.touches[0];
+            this.touch.startX = touch.clientX;
+            this.touch.lastX = touch.clientX;
+            this.touch.startTime = Date.now();
+            this.touch.lastTime = Date.now();
+            this.touch.velocity = 0;
+            this.touch.isTouching = true;
+        };
+
+        const touchMove = (e) => {
+            if (!this.touch.isTouching || this.state.gameState !== GameState.PLAYING) return;
+            e.preventDefault();
+            
+            const touch = e.touches[0];
+            const now = Date.now();
+            const deltaTime = now - this.touch.lastTime;
+            if (deltaTime === 0) return;
+
+            const deltaX = touch.clientX - this.touch.lastX;
+            
+            // Calculate new velocity based on movement speed
+            const newVelocity = (deltaX / deltaTime) * 2;
+            
+            // Smooth velocity transitions
+            this.touch.velocity = 0.6 * this.touch.velocity + 0.4 * newVelocity;
+            this.touch.velocity = Math.max(-this.touch.maxVelocity, 
+                                        Math.min(this.touch.maxVelocity, this.touch.velocity));
+            
+            this.touch.lastX = touch.clientX;
+            this.touch.lastTime = now;
+        };
+
+        const touchEnd = (e) => {
+            e.preventDefault();
+            
+            // Check for tap (quick touch with minimal movement)
+            const touchDuration = Date.now() - this.touch.startTime;
+            const touch = e.changedTouches[0];
+            const moveDistance = Math.abs(touch.clientX - this.touch.startX);
+            
+            if (touchDuration < 200 && moveDistance < 10) {
+                if (this.state.gameState === GameState.PLAYING) {
+                    this.player.shoot();
+                }
+            }
+            
+            this.touch.isTouching = false;
+        };
+
+        this.canvas.addEventListener('touchstart', touchStart, { passive: false });
+        this.canvas.addEventListener('touchmove', touchMove, { passive: false });
+        this.canvas.addEventListener('touchend', touchEnd, { passive: false });
+    }
+
+    // High score management
+    loadHighScores() {
+        const savedScores = localStorage.getItem('spaceInvadersHighScores');
+        if (savedScores) {
+            GAME_CONFIG.highScores = JSON.parse(savedScores);
+        }
+    }
+    
+    saveHighScore(score) {
+        // Check if score qualifies for high scores
+        const lowestScore = GAME_CONFIG.highScores.length >= 5 ? 
+            GAME_CONFIG.highScores[GAME_CONFIG.highScores.length - 1].score : 0;
+            
+        const isHighScore = GAME_CONFIG.highScores.length < 5 || score > lowestScore;
+            
+        if (!isHighScore && GAME_CONFIG.highScores.length >= 5) {
+            // Not a high score and we already have 5 scores
+            return false;
+        }
+        
+        GAME_CONFIG.highScores.push({
+            score,
+            date: new Date().toLocaleDateString(),
+            level: this.state.level,
+            accuracy: GameStats.getAccuracy()
+        });
+        
+        // Sort and keep only top 5
+        GAME_CONFIG.highScores.sort((a, b) => b.score - a.score);
+        if (GAME_CONFIG.highScores.length > 5) {
+            GAME_CONFIG.highScores = GAME_CONFIG.highScores.slice(0, 5);
+        }
+        
+        // Save to localStorage
+        localStorage.setItem('spaceInvadersHighScores', JSON.stringify(GAME_CONFIG.highScores));
+        
+        // Return rank (position in high scores)
+        return GAME_CONFIG.highScores.findIndex(s => s.score === score) + 1;
+    }
+
+    formatTime(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${minutes}m ${secs}s`;
+    }
+
+    // Spawn power-up drops from destroyed enemies
+    spawnPowerUpDrop(x, y) {
+        const powerUp = new PowerUpDrop(x, y);
+        this.entities.add(powerUp);
+    }
+}
+
+// Add the BonusShip class (single declaration)
+class BonusShip {
+    constructor() {
+        this.width = BONUS_SHIP_WIDTH;
+        this.height = BONUS_SHIP_HEIGHT;
+        // Randomize direction
+        this.direction = Math.random() > 0.5 ? 1 : -1;
+        // Start off-screen
+        this.x = this.direction > 0 ? -this.width : GAME_CONFIG.width;
+        // Random height in top area of screen
+        this.y = 30 + Math.random() * 80;
+        // Random speed
+        this.speed = 2 + Math.random() * 2;
+        // Random bonus type
+        this.bonusType = this._getRandomBonusType();
+        this.active = true;
+    }
+    
+    _getRandomBonusType() {
+        const types = Object.values(BonusType);
+        return types[Math.floor(Math.random() * types.length)];
+    }
+    
+    draw(ctx) {
+        // Get color based on bonus type
+        let color;
+        switch (this.bonusType) {
+            case BonusType.RAPID_FIRE:
+                color = '#ff0'; // Yellow
+                break;
+            case BonusType.MULTI_SHOT:
+                color = '#f0f'; // Purple
+                break;
+            case BonusType.BULLET_SHIELD:
+                color = '#0ff'; // Cyan
+                break;
+            default:
+                color = '#fff';
+        }
+        
+        // Draw bonus ship
+        ctx.fillStyle = color;
+        
+        // Draw saucer body
+        ctx.beginPath();
+        ctx.ellipse(
+            this.x + this.width/2, 
+            this.y + this.height*0.6, 
+            this.width*0.5, 
+            this.height*0.3, 
+            0, 0, Math.PI * 2
+        );
+        ctx.fill();
+        
+        // Draw dome
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(
+            this.x + this.width/2, 
+            this.y + this.height*0.3, 
+            this.width*0.3, 
+            Math.PI, 0
+        );
+        ctx.fill();
+        
+        // Draw lights that blink
+        if (Math.floor(Date.now() / 200) % 2) {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            
+            // Three blinking lights under the ship
+            for (let i = 0; i < 3; i++) {
+                ctx.rect(
+                    this.x + this.width * (0.25 + i * 0.25) - 5,
+                    this.y + this.height * 0.8,
+                    10,
+                    5
+                );
+            }
+            ctx.fill();
+        }
+    }
+    
+    update(deltaTime) {
+        // Calculate movement based on deltaTime for consistent speed
+        const multiplier = window.gameInstance.deltaMultiplier;
+        this.x += this.direction * this.speed * multiplier;
+        
+        // Check if ship has left the screen
+        if ((this.direction > 0 && this.x > GAME_CONFIG.width) || 
+            (this.direction < 0 && this.x < -this.width)) {
+            this.active = false;
+        }
+        
+        return this.active;
+    }
+    
+    hit() {
+        // When hit by player, apply bonus and create explosion
+        const bonusType = this.bonusType;
+        
+        // Create explosion 
+        window.gameInstance.explosions.push(
+            window.gameInstance.explosionPool.get({
+                x: this.x + this.width/2,
+                y: this.y + this.height/2,
+                color: '#fff',
+                size: 40
+            })
+        );
+        
+        // Play sound first
+        window.gameInstance.soundManager.playPowerupCollect();
+        
+        // Apply the bonus with a slight delay to ensure the game state is ready
+        setTimeout(() => {
+            if (window.gameInstance && window.gameInstance.player) {
+                // Apply the bonus to the player
+                if (bonusType === BonusType.EXTRA_LIFE) {
+                    window.gameInstance.state.lives++;
+                    window.gameInstance.updateLives();
+                    // Show message
+                    const messageEl = document.createElement('div');
+                    messageEl.className = 'bonus-message';
+                    messageEl.textContent = "EXTRA LIFE!";
+                    document.getElementById('game-container').appendChild(messageEl);
+                    setTimeout(() => {
+                        messageEl.classList.add('fade-out');
+                        setTimeout(() => messageEl.remove(), 1000);
+                    }, 2000);
+                } else if (bonusType === BonusType.SPEED_BOOST) {
+                    window.gameInstance.player.speedBoost = true;
+                    window.gameInstance.player.speed = 8;
+                    window.gameInstance.player.speedBoostEndTime = Date.now() + GAME_CONFIG.bonusDuration;
+                    // Show message
+                    const messageEl = document.createElement('div');
+                    messageEl.className = 'bonus-message';
+                    messageEl.textContent = "SPEED BOOST!";
+                    document.getElementById('game-container').appendChild(messageEl);
+                    setTimeout(() => {
+                        messageEl.classList.add('fade-out');
+                        setTimeout(() => messageEl.remove(), 1000);
+                    }, 2000);
+                } else {
+                    // Standard bonuses
+                    window.gameInstance.player.applyBonus(bonusType);
+                }
+                
+                // Log bonus application for debugging
+                console.log("Applied bonus:", bonusType);
+                
+                // Update game stats
+                GameStats.powerupsCollected++;
+            }
+        }, 10);
+        
+        this.active = false;
+    }
+}
+
+// Enhance Player class with bonus functionality
+class Player {
+    constructor() {
+        this.width = PLAYER_WIDTH;
+        this.height = PLAYER_HEIGHT;
+        this.x = GAME_CONFIG.width / 2 - this.width / 2;
+        this.y = GAME_CONFIG.height - this.height - 10;
+        this.speed = 5;
+        this.bullets = [];
+        this.lastShot = 0;
+        this.shootDelay = 250; // Minimum time between shots
+        
+        // Add bonus properties
+        this.hasBonus = false;
+        this.bonusType = null;
+        this.bonusEndTime = 0;
+
+        // Add support for speed boost powerup
+        this.speedBoost = false;
+        this.speedBoostEndTime = 0;
+    }
+    
+    draw(ctx) {
+        // Change ship color based on active bonus
+        ctx.fillStyle = this.hasBonus ? this._getBonusColor() : '#0f0';
+        
+        // Draw spaceship body with gradient
+        const gradient = ctx.createLinearGradient(this.x, this.y, this.x, this.y + this.height);
+        gradient.addColorStop(0, '#0f0');
+        gradient.addColorStop(1, '#080');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width / 2, this.y);
+        ctx.lineTo(this.x + this.width, this.y + this.height);
+        ctx.lineTo(this.x + this.width * 0.8, this.y + this.height * 0.8);
+        ctx.lineTo(this.x + this.width * 0.6, this.y + this.height);
+        ctx.lineTo(this.x + this.width * 0.4, this.y + this.height);
+        ctx.lineTo(this.x + this.width * 0.2, this.y + this.height * 0.8);
+        ctx.lineTo(this.x, this.y + this.height);
+        ctx.closePath();
+        ctx.fill();
+
+        // Draw cockpit with gradient
+        const cockpitGradient = ctx.createRadialGradient(this.x + this.width / 2, this.y + this.height * 0.4, 0, this.x + this.width / 2, this.y + this.height * 0.4, this.width * 0.15);
+        cockpitGradient.addColorStop(0, '#00f');
+        cockpitGradient.addColorStop(1, '#004');
+        ctx.fillStyle = cockpitGradient;
+        ctx.beginPath();
+        ctx.arc(this.x + this.width / 2, this.y + this.height * 0.4, this.width * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw shield if bullet shield bonus is active
+        if (this.hasBonus && this.bonusType === BonusType.BULLET_SHIELD) {
+            ctx.strokeStyle = '#0ff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(this.x + this.width/2, this.y + this.height/2, this.width * 0.8, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        // Draw bullets
+        this.bullets.forEach(bullet => bullet.draw(ctx));
+    }
+    
+    _getBonusColor() {
+        switch (this.bonusType) {
+            case BonusType.RAPID_FIRE:
+                return '#ff0'; // Yellow for rapid fire
+            case BonusType.MULTI_SHOT:
+                return '#f0f'; // Purple for multi-shot
+            case BonusType.BULLET_SHIELD:
+                return '#0ff'; // Cyan for bullet shield
+            default:
+                return '#0f0';
+        }
+    }
+    
+    move(direction) {
+        this.x = Math.max(0, Math.min(GAME_CONFIG.width - this.width, this.x + direction * this.speed));
+    }
+
+    shoot() {
+        const now = Date.now();
+        // Get current shoot delay (reduced if rapid fire bonus is active)
+        const currentDelay = this.hasBonus && this.bonusType === BonusType.RAPID_FIRE ? 
+                           this.shootDelay / 3 : this.shootDelay;
+        
+        if (now - this.lastShot >= currentDelay) {
+            // Track shots fired when shooting, not when checking collisions
+            GameStats.shotsFired++;
+            
+            // Normal shot or multi-shot based on bonus
+            if (this.hasBonus && this.bonusType === BonusType.MULTI_SHOT) {
+                // Create 3 bullets for multi-shot - each counts as one shot
+                GameStats.shotsFired += 2; // 2 additional shots
+                
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + this.width / 2, 
+                    y: this.y
+                }));
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + this.width / 4, 
+                    y: this.y + this.height / 3
+                }));
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + 3 * this.width / 4, 
+                    y: this.y + this.height / 3
+                }));
+            } else {
+                // Normal single shot
+                this.bullets.push(window.gameInstance.bulletPool.get({
+                    x: this.x + this.width / 2, 
+                    y: this.y
+                }));
+            }
+            
+            this.lastShot = now;
+            window.gameInstance.soundManager.playShoot();
+        }
+    }
+    
+    applyBonus(type) {
+        this.hasBonus = true;
+        this.bonusType = type;
+        this.bonusEndTime = Date.now() + GAME_CONFIG.bonusDuration;
+        
+        // Show message for bonus
+        this._showBonusMessage();
+    }
+    
+    _showBonusMessage() {
+        let message;
+        switch (this.bonusType) {
+            case BonusType.RAPID_FIRE:
+                message = "RAPID FIRE!";
+                break;
+            case BonusType.MULTI_SHOT:
+                message = "MULTI-SHOT!";
+                break;
+            case BonusType.BULLET_SHIELD:
+                message = "BULLET SHIELD!";
+                break;
+        }
+        
+        const messageEl = document.createElement('div');
+        messageEl.className = 'bonus-message';
+        messageEl.textContent = message;
+        document.getElementById('game-container').appendChild(messageEl);
+        
+        setTimeout(() => {
+            messageEl.classList.add('fade-out');
+            setTimeout(() => messageEl.remove(), 1000);
+        }, 2000);
+    }
+    
+    update(deltaTime) {
+        // Check if bonus has expired
+        const now = Date.now();
+        if (this.hasBonus && Date.now() > this.bonusEndTime) {
+            this.hasBonus = false;
+            this.bonusType = null;
+        }
+        
+        // Update bullets with efficient memory management
+        this.bullets = this.bullets.filter(bullet => {
+            bullet.update(deltaTime);
+            
+            if (bullet.y <= 0) {
+                window.gameInstance.bulletPool.release(bullet);
+                return false;
+            }
+            return true;
+        });
+
+        // Check for bonus expiration
+        if ((this.hasBonus && now > this.bonusEndTime) ||
+            (this.speedBoost && now > this.speedBoostEndTime)) {
+            
+            if (this.hasBonus && now > this.bonusEndTime) {
+                this.hasBonus = false;
+                this.bonusType = null;
+            }
+            
+            if (this.speedBoost && now > this.speedBoostEndTime) {
+                this.speedBoost = false;
+                this.speed = 5; // Reset to default speed
+            }
+        }
+    }
+}
+
+// Optimize Enemy class performance
+class Enemy {
+    constructor(x, y, type = 'basic') {
+        this.x = x;
+        this.y = y;
+        this.width = ENEMY_WIDTH;
+        this.height = ENEMY_HEIGHT;
+        this.speed = GAME_CONFIG.levels[0].enemySpeed; // Start with first level speed
+        this.bullets = [];
+        this.lastShot = 0;
+        this.type = type;
+        this.direction = 1; // Add direction property
+        this.shootDelay = 2000 + Math.random() * 6000; // Increase delay between shots
+        this.lastShot = Date.now() + Math.random() * 3000; // Greater offset for initial shooting
+    }
+
+    draw(ctx) {
+        switch(this.type) {
+            case 'basic':
+                this.drawBasicAlien(ctx);
+                break;
+            case 'advanced':
+                this.drawAdvancedAlien(ctx);
+                break;
+            case 'boss':
+                this.drawBossAlien(ctx);
+                break;
+        }
+    }
+
+    drawBasicAlien(ctx) {
+        // Redesigned level 1 alien - more detailed and interesting
+        
+        // Draw an oval-shaped head with green gradient
+        const headGradient = ctx.createLinearGradient(
+            this.x, this.y, 
+            this.x, this.y + this.height
+        );
+        headGradient.addColorStop(0, '#5f0');
+        headGradient.addColorStop(1, '#080');
+        ctx.fillStyle = headGradient;
+        
+        // Draw alien head
+        ctx.beginPath();
+        ctx.ellipse(
+            this.x + this.width/2, 
+            this.y + this.height/2, 
+            this.width * 0.4, 
+            this.height * 0.45, 
+            0, 0, Math.PI * 2
+        );
+        ctx.fill();
+        
+        // Draw large black eyes
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        
+        // Left eye - almond shaped
+        ctx.save();
+        ctx.translate(this.x + this.width * 0.3, this.y + this.height * 0.4);
+        ctx.scale(1, 0.6);
