@@ -8402,3 +8402,156 @@ class Enemy {
         this.ctx.fillText('SPACE INVADERS', 0, 0);
         this.ctx.restore();
         
+        // Draw high scores
+        this.ctx.shadowBlur = 0;
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '24px Arial';
+        this.ctx.fillText('HIGH SCORES', GAME_CONFIG.width/2, GAME_CONFIG.height/2 + 70);
+        
+        let yPos = GAME_CONFIG.height/2 + 110;
+        if (GAME_CONFIG.highScores.length === 0) {
+            this.ctx.fillText('No scores yet!', GAME_CONFIG.width/2, yPos);
+        } else {
+            GAME_CONFIG.highScores.slice(0, 5).forEach((score, index) => {
+                this.ctx.fillText(`${index + 1}. ${score.score} pts - ${score.date}`, GAME_CONFIG.width/2, yPos);
+                yPos += 30;
+            });
+        }
+        
+        // Draw device-specific instructions
+        this.ctx.font = '20px Arial';
+        if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
+            this.ctx.fillText('Slide to move, tap to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.9);
+        } else {
+            this.ctx.fillText('Press ENTER to start', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.9);
+            this.ctx.font = '16px Arial';
+            this.ctx.fillText('Controls: Arrows to move, Space to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.95);
+            this.ctx.fillText('P to pause, M to mute', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.98);
+        }
+        
+        // Update menu button visibility
+        document.getElementById('start-button').classList.remove('hidden');
+        document.getElementById('restart-button').classList.add('hidden');
+        
+        // Draw player ship with gradients as seen in-game
+        const shipX = GAME_CONFIG.width/2;
+        const shipY = GAME_CONFIG.height * 0.85;
+        const width = PLAYER_WIDTH * 1.5;
+        const height = PLAYER_HEIGHT * 1.5;
+        
+        // Draw thrust flame animation
+        const thrustSize = Math.sin(Date.now() / 100) * 5 + 10;
+        this.ctx.fillStyle = '#f80';
+        this.ctx.beginPath();
+        this.ctx.moveTo(shipX, shipY + height * 0.4);
+        this.ctx.lineTo(shipX - 8, shipY + height * 0.4 + thrustSize);
+        this.ctx.lineTo(shipX + 8, shipY + height * 0.4 + thrustSize);
+        this.ctx.closePath();
+        this.ctx.fill();
+        
+        // Draw spaceship body with gradient - same as in-game ship
+        const gradient = this.ctx.createLinearGradient(shipX - width/2, shipY - height/2, shipX - width/2, shipY + height/2);
+        gradient.addColorStop(0, '#0f0');
+        gradient.addColorStop(1, '#080');
+        this.ctx.fillStyle = gradient;
+        
+        this.ctx.beginPath();
+        this.ctx.moveTo(shipX, shipY - height/2);
+        this.ctx.lineTo(shipX + width/2, shipY + height/2);
+        this.ctx.lineTo(shipX + width * 0.3, shipY + height * 0.3);
+        this.ctx.lineTo(shipX + width * 0.1, shipY + height/2);
+        this.ctx.lineTo(shipX - width * 0.1, shipY + height/2);
+        this.ctx.lineTo(shipX - width * 0.3, shipY + height * 0.3);
+        this.ctx.lineTo(shipX - width/2, shipY + height/2);
+        this.ctx.closePath();
+        this.ctx.fill();
+        
+        // Draw cockpit with gradient
+        const cockpitGradient = this.ctx.createRadialGradient(
+            shipX, shipY - height * 0.1, 0, 
+            shipX, shipY - height * 0.1, width * 0.15
+        );
+        cockpitGradient.addColorStop(0, '#00f');
+        cockpitGradient.addColorStop(1, '#004');
+        this.ctx.fillStyle = cockpitGradient;
+        this.ctx.beginPath();
+        this.ctx.arc(shipX, shipY - height * 0.1, width * 0.15, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Display alien types
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '18px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('ENEMY TYPES', GAME_CONFIG.width/2, GAME_CONFIG.height/2 - 80);
+        
+        // Create temporary enemies to show their designs
+        const tempEnemyWidth = 40;
+        const tempEnemyHeight = 30;
+        const centerX = GAME_CONFIG.width/2;
+        const enemyY = GAME_CONFIG.height/2 - 40;
+        const spacing = 120;
+        
+        // Draw Level 1 Enemy (Basic)
+        // Green alien with oval head
+        const x1 = centerX - spacing;
+        const y1 = enemyY;
+        
+        const headGradient = this.ctx.createLinearGradient(x1, y1, x1, y1 + tempEnemyHeight);
+        headGradient.addColorStop(0, '#5f0');
+        headGradient.addColorStop(1, '#080');
+        this.ctx.fillStyle = headGradient;
+        
+        this.ctx.beginPath();
+        this.ctx.ellipse(x1 + tempEnemyWidth/2, y1 + tempEnemyHeight/2, 
+                    tempEnemyWidth * 0.4, tempEnemyHeight * 0.45, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Eyes
+        this.ctx.fillStyle = '#000';
+        this.ctx.beginPath();
+        this.ctx.save();
+        this.ctx.translate(x1 + tempEnemyWidth * 0.3, y1 + tempEnemyHeight * 0.4);
+        this.ctx.scale(1, 0.6);
+        this.ctx.arc(0, 0, tempEnemyWidth * 0.15, 0, Math.PI * 2);
+        this.ctx.restore();
+        
+        this.ctx.save();
+        this.ctx.translate(x1 + tempEnemyWidth * 0.7, y1 + tempEnemyHeight * 0.4);
+        this.ctx.scale(1, 0.6);
+        this.ctx.arc(0, 0, tempEnemyWidth * 0.15, 0, Math.PI * 2);
+        this.ctx.restore();
+        this.ctx.fill();
+        
+        // Draw Level 2 Enemy (Advanced/Purple)
+        const x2 = centerX;
+        const y2 = enemyY;
+        
+        this.ctx.fillStyle = '#f0f';
+        this.ctx.beginPath();
+        this.ctx.ellipse(x2 + tempEnemyWidth/2, y2 + tempEnemyHeight/2, 
+                    tempEnemyWidth*0.45, tempEnemyHeight*0.4, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Eyes
+        this.ctx.fillStyle = '#0ff';
+        this.ctx.beginPath();
+        this.ctx.arc(x2 + tempEnemyWidth*0.25, y2 + tempEnemyHeight*0.35, tempEnemyWidth*0.1, 0, Math.PI * 2);
+        this.ctx.arc(x2 + tempEnemyWidth*0.5, y2 + tempEnemyHeight*0.3, tempEnemyWidth*0.12, 0, Math.PI * 2);
+        this.ctx.arc(x2 + tempEnemyWidth*0.75, y2 + tempEnemyHeight*0.35, tempEnemyWidth*0.1, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Draw Level 3 Enemy (Boss/Red)
+        const x3 = centerX + spacing;
+        const y3 = enemyY;
+        
+        const bossGradient = this.ctx.createLinearGradient(x3, y3, x3, y3 + tempEnemyHeight);
+        bossGradient.addColorStop(0, '#f55');
+        bossGradient.addColorStop(0.5, '#900');
+        bossGradient.addColorStop(1, '#600');
+        
+        this.ctx.fillStyle = bossGradient;
+        this.ctx.beginPath();
+        this.ctx.moveTo(x3 + tempEnemyWidth * 0.5, y3 + tempEnemyHeight * 0.15);
+        this.ctx.lineTo(x3 + tempEnemyWidth * 0.8, y3 + tempEnemyHeight * 0.3);
+        this.ctx.lineTo(x3 + tempEnemyWidth * 0.9, y3 + tempEnemyHeight * 0.7);
+        this.ctx.lineTo(x3 + tempEnemyWidth * 0.5, y3 + tempEnemyHeight * 0.9);
