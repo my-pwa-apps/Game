@@ -539,15 +539,15 @@ class ObjectPool {
     }
 }
 
-// Optimize game class with performance improvements
-class Game {
+// Add after ParticleSystem class and before Game class
+class Bullet {
     constructor() {
-        // Cache DOM elements for better performance
-        this.domCache = {
-            canvas: document.getElementById('gameCanvas'),
-            gameContainer: document.getElementById('game-container'),
-            fps: document.getElementById('fps'),
-            score: document.getElementById('score'),
+        this.width = BULLET_WIDTH;
+        this.height = BULLET_HEIGHT;
+        this.x = 0;
+        this.y = 0;
+        this.speed = 8;
+        this.active = false;
             lives: document.getElementById('lives'),
             startButton: document.getElementById('start-button'),
             muteButton: document.getElementById('mute-button'),
