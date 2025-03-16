@@ -914,18 +914,10 @@ class Game {
         // Draw the stars background for the playing state
         this.particleSystem.drawStarfield(this.ctx);
         
-        // Draw player with blinking effect
+        // Draw player with blinking effect when invulnerable, but always use beautiful ship design
         if (!this.playerInvulnerable || Math.floor(Date.now() / 100) % 2) {
-            // Use pre-rendered player ship if not using power-ups
-            if (!this.player.hasBonus) {
-                this.ctx.drawImage(
-                    this.playerShipCanvas, 
-                    this.player.x - PLAYER_WIDTH/4, 
-                    this.player.y - PLAYER_HEIGHT/4
-                );
-            } else {
-                this.player.draw(this.ctx);
-            }
+            // Always draw player with full details and gradient
+            this.player.draw(this.ctx);
         }
         
         // Batch similar draw operations for better performance
@@ -2708,53 +2700,204 @@ class Enemy {
     }
 
     drawBasicAlien(ctx) {
+        // Draw basic alien creature with angry appearance
+        
+        // Body color
         ctx.fillStyle = '#f00';
-        // Draw alien head
+        
+        // Main alien head (slightly oval)
         ctx.beginPath();
-        ctx.arc(this.x + this.width/2, this.y + this.height*0.4, this.width*0.3, 0, Math.PI * 2);
+        ctx.ellipse(this.x + this.width/2, this.y + this.height/2, this.width*0.4, this.height*0.35, 0, 0, Math.PI * 2);
         ctx.fill();
         
-        // Draw eyes
+        // Draw evil eyes
+        ctx.fillStyle = '#ff0'; // Yellow eyes
+        ctx.beginPath();
+        
+        // Left eye - slanted for angry look
+        ctx.save();
+        ctx.translate(this.x + this.width*0.35, this.y + this.height*0.4);
+        ctx.rotate(-Math.PI/8); // Rotate to create angry slant
+        ctx.ellipse(0, 0, this.width*0.12, this.height*0.08, 0, 0, Math.PI * 2);
+        ctx.restore();
+        
+        // Right eye - slanted for angry look
+        ctx.save();
+        ctx.translate(this.x + this.width*0.65, this.y + this.height*0.4);
+        ctx.rotate(Math.PI/8); // Rotate opposite direction
+        ctx.ellipse(0, 0, this.width*0.12, this.height*0.08, 0, 0, Math.PI * 2);
+        ctx.restore();
+        ctx.fill();
+        
+        // Draw pupils
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width*0.35, this.y + this.height*0.4, this.width*0.05, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width*0.65, this.y + this.height*0.4, this.width*0.05, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw angry mouth
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width*0.3, this.y + this.height*0.65);
+        ctx.quadraticCurveTo(this.x + this.width*0.5, this.y + this.height*0.8, this.x + this.width*0.7, this.y + this.height*0.65);
+        ctx.stroke();
+        
+        // Draw teeth
         ctx.fillStyle = '#fff';
         ctx.beginPath();
-        ctx.arc(this.x + this.width*0.35, this.y + this.height*0.35, this.width*0.08, 0, Math.PI * 2);
-        ctx.arc(this.x + this.width*0.65, this.y + this.height*0.35, this.width*0.08, 0, Math.PI * 2);
+        for (let i = 0; i < 3; i++) {
+            const x = this.x + this.width * (0.38 + i * 0.12);
+            ctx.moveTo(x, this.y + this.height*0.65);
+            ctx.lineTo(x - 4, this.y + this.height*0.73);
+            ctx.lineTo(x + 4, this.y + this.height*0.73);
+        }
         ctx.fill();
     }
 
     drawAdvancedAlien(ctx) {
-        ctx.fillStyle = '#f0f';
-        // Draw UFO body
+        // Draw advanced alien creature with more details
+        
+        // Main body - different color for this alien type
+        ctx.fillStyle = '#f0f'; // Purple alien
+        
+        // Draw oval body
         ctx.beginPath();
-        ctx.ellipse(this.x + this.width/2, this.y + this.height*0.6, this.width*0.5, this.height*0.2, 0, 0, Math.PI * 2);
+        ctx.ellipse(this.x + this.width/2, this.y + this.height/2, this.width*0.45, this.height*0.4, 0, 0, Math.PI * 2);
         ctx.fill();
         
-        // Draw dome
-        ctx.fillStyle = '#ff0';
+        // Draw multiple eyes (3 eyes for advanced alien)
+        ctx.fillStyle = '#0ff'; // Cyan eyes
         ctx.beginPath();
-        ctx.arc(this.x + this.width/2, this.y + this.height*0.4, this.width*0.25, Math.PI, 0);
+        // Left eye
+        ctx.arc(this.x + this.width*0.25, this.y + this.height*0.35, this.width*0.1, 0, Math.PI * 2);
+        // Middle eye (slightly bigger)
+        ctx.arc(this.x + this.width*0.5, this.y + this.height*0.3, this.width*0.12, 0, Math.PI * 2);
+        // Right eye
+        ctx.arc(this.x + this.width*0.75, this.y + this.height*0.35, this.width*0.1, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw pupils
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width*0.25, this.y + this.height*0.35, this.width*0.04, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width*0.5, this.y + this.height*0.3, this.width*0.05, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width*0.75, this.y + this.height*0.35, this.width*0.04, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw tentacles at bottom
+        ctx.strokeStyle = '#f0f';
+        ctx.lineWidth = 3;
+        const baseY = this.y + this.height*0.7;
+        for (let i = 0; i < 4; i++) {
+            const startX = this.x + this.width * (0.3 + i * 0.15);
+            ctx.beginPath();
+            ctx.moveTo(startX, baseY);
+            // Create wavy tentacle
+            ctx.quadraticCurveTo(
+                startX + (i % 2 ? 5 : -5), 
+                baseY + this.height*0.2, 
+                startX + (i % 2 ? 10 : -10), 
+                baseY + this.height*0.35
+            );
+            ctx.stroke();
+        }
+        
+        // Draw mouth
+        ctx.fillStyle = '#400';
+        ctx.beginPath();
+        ctx.ellipse(this.x + this.width/2, this.y + this.height*0.6, this.width*0.2, this.height*0.1, 0, 0, Math.PI * 2);
         ctx.fill();
     }
 
     drawBossAlien(ctx) {
-        ctx.fillStyle = '#f00';
-        // Draw mothership
+        // Draw boss alien as a more menacing creature
+        
+        // Body
+        const gradient = ctx.createRadialGradient(
+            this.x + this.width/2, this.y + this.height/2, 0,
+            this.x + this.width/2, this.y + this.height/2, this.width*0.6
+        );
+        gradient.addColorStop(0, '#f00');
+        gradient.addColorStop(1, '#800');
+        ctx.fillStyle = gradient;
+        
+        // Main head shape - more complex
         ctx.beginPath();
-        ctx.moveTo(this.x, this.y + this.height*0.5);
-        ctx.lineTo(this.x + this.width*0.2, this.y + this.height*0.3);
-        ctx.lineTo(this.x + this.width*0.8, this.y + this.height*0.3);
-        ctx.lineTo(this.x + this.width, this.y + this.height*0.5);
-        ctx.lineTo(this.x + this.width*0.8, this.y + this.height*0.7);
-        ctx.lineTo(this.x + this.width*0.2, this.y + this.height*0.7);
-        ctx.closePath();
+        ctx.moveTo(this.x + this.width*0.5, this.y + this.height*0.1);  // Top middle
+        ctx.quadraticCurveTo(this.x + this.width*0.8, this.y + this.height*0.2, this.x + this.width*0.95, this.y + this.height*0.5);  // Top right curve
+        ctx.quadraticCurveTo(this.x + this.width*0.8, this.y + this.height*0.8, this.x + this.width*0.5, this.y + this.height*0.9);  // Bottom right curve
+        ctx.quadraticCurveTo(this.x + this.width*0.2, this.y + this.height*0.8, this.x + this.width*0.05, this.y + this.height*0.5);  // Bottom left curve
+        ctx.quadraticCurveTo(this.x + this.width*0.2, this.y + this.height*0.2, this.x + this.width*0.5, this.y + this.height*0.1);  // Back to top
         ctx.fill();
-
-        // Draw weapon ports
+        
+        // Draw large, angry eyes
         ctx.fillStyle = '#ff0';
         ctx.beginPath();
-        ctx.rect(this.x + this.width*0.3, this.y + this.height*0.6, this.width*0.1, this.height*0.1);
-        ctx.rect(this.x + this.width*0.6, this.y + this.height*0.6, this.width*0.1, this.height*0.1);
+        // Left eye - angular
+        ctx.save();
+        ctx.translate(this.x + this.width*0.3, this.y + this.height*0.35);
+        ctx.rotate(-Math.PI/6); // Rotate for angry look
+        ctx.scale(1, 0.6); // Make it squinted
+        ctx.arc(0, 0, this.width*0.15, 0, Math.PI * 2);
+        ctx.restore();
+        
+        // Right eye - angular
+        ctx.save();
+        ctx.translate(this.x + this.width*0.7, this.y + this.height*0.35);
+        ctx.rotate(Math.PI/6); // Rotate in opposite direction
+        ctx.scale(1, 0.6); // Make it squinted
+        ctx.arc(0, 0, this.width*0.15, 0, Math.PI * 2);
+        ctx.restore();
         ctx.fill();
+        
+        // Draw evil pupils
+        ctx.fillStyle = '#000';
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(this.x + this.width*0.3, this.y + this.height*0.35, this.width*0.07, this.height*0.12, -Math.PI/6, 0, Math.PI * 2);
+        ctx.ellipse(this.x + this.width*0.7, this.y + this.height*0.35, this.width*0.07, this.height*0.12, Math.PI/6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        
+        // Draw fearsome mouth with sharp teeth
+        ctx.fillStyle = '#300';
+        ctx.beginPath();
+        ctx.ellipse(this.x + this.width*0.5, this.y + this.height*0.65, this.width*0.3, this.height*0.15, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw teeth
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        const teethCount = 7;
+        for (let i = 0; i < teethCount; i++) {
+            const toothX = this.x + this.width * (0.3 + (i * 0.4 / teethCount));
+            const toothSize = (i === Math.floor(teethCount/2)) ? 10 : 7; // Middle tooth bigger
+            
+            // Upper tooth
+            ctx.moveTo(toothX, this.y + this.height*0.58);
+            ctx.lineTo(toothX - toothSize/2, this.y + this.height*0.65);
+            ctx.lineTo(toothX + toothSize/2, this.y + this.height*0.65);
+            
+            // Lower tooth
+            const lowerX = this.x + this.width * (0.35 + (i * 0.35 / teethCount));
+            ctx.moveTo(lowerX, this.y + this.height*0.72);
+            ctx.lineTo(lowerX - toothSize/2, this.y + this.height*0.65);
+            ctx.lineTo(lowerX + toothSize/2, this.y + this.height*0.65);
+        }
+        ctx.fill();
+        
+        // Add some tentacle/spikes on top of head
+        ctx.strokeStyle = '#f00';
+        ctx.lineWidth = 3;
+        for (let i = 0; i < 5; i++) {
+            ctx.beginPath();
+            const startX = this.x + this.width * (0.3 + i * 0.1);
+            ctx.moveTo(startX, this.y + this.height*0.15);
+            ctx.lineTo(startX, this.y - this.height*0.05);
+            ctx.stroke();
+        }
     }
 
     move(direction) {
