@@ -548,6 +548,36 @@ class Bullet {
         this.y = 0;
         this.speed = 8;
         this.active = false;
+        this.enemyBullet = false;
+    }
+
+    reset(params = {}) {
+        this.x = params.x || 0;
+        this.y = params.y || 0;
+        this.active = true;
+        this.enemyBullet = params.enemyBullet || false;
+        return this;
+    }
+
+    update(deltaTime) {
+        if (this.enemyBullet) {
+            this.y += this.speed;
+        } else {
+            this.y -= this.speed;
+        }
+        return this.active;
+    }
+
+    draw(ctx) {
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+}
+
+class Game {
+    constructor() {
+        this.domCache = {
+            canvas: document.getElementById('game-canvas'),
+            score: document.getElementById('score'),
             lives: document.getElementById('lives'),
             startButton: document.getElementById('start-button'),
             muteButton: document.getElementById('mute-button'),
