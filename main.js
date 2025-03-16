@@ -1648,8 +1648,10 @@ class Game {
     }
 
     startGame() {
-        // Stop any previous game
-        this.stop();
+        console.log("startGame called");
+        
+        // Clear any pending timeouts first
+        this.clearAllTimeouts();
         
         // Reset state
         this.state.gameState = GameState.PLAYING;
@@ -1657,6 +1659,8 @@ class Game {
         this.state.lives = 3;
         this.state.level = 1;
         this.isTransitioningLevel = false;
+        
+        // Update UI
         this.updateScore();
         this.updateLives();
         
@@ -1670,7 +1674,7 @@ class Game {
         this.entities.add(this.player);
         this.initEnemies();
         
-        // Update menu visibility - ensure menu buttons are properly hidden
+        // Update menu visibility
         const startBtn = document.getElementById('start-button');
         const restartBtn = document.getElementById('restart-button');
         
@@ -1681,11 +1685,14 @@ class Game {
         GameStats.reset();
         this.lastTimeUpdate = Date.now();
         
-        // Clear particles and make sure background is redrawn
+        // Clear particles and refresh background
         this.particleSystem.clear();
-        this.prepareBackgroundStars(); // Redraw background for new game
+        this.prepareBackgroundStars();
         
-        this.start();
+        // Start the game loop again
+        this.state.isRunning = true;
+        this.lastTime = performance.now();
+        requestAnimationFrame(this.gameLoop.bind(this));
     }
     
     togglePause() {
@@ -1734,10 +1741,11 @@ class Game {
     victory() {
         console.log("Victory method called");
         
-        // Cancel any pending level transition and stop the game first
+        // Cancel any pending level transition first
         this.isTransitioningLevel = false;
-        this.stop();
-        this.state.gameState = GameState.GAME_OVER;
+        
+        // Stop the game loop but don't prevent all interaction
+        this.state.isRunning = false;
         
         // Clean up any remaining entities and effects
         this.cleanupEntities();
@@ -1751,7 +1759,7 @@ class Game {
         existingMessages.forEach(msg => msg.remove());
         
         // Show victory screen - ensure canvas is properly cleared first
-        this.ctx.clearRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         this.ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
         this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
         
@@ -1784,31 +1792,56 @@ class Game {
         this.ctx.fillText(`Accuracy: ${GameStats.getAccuracy()}%`, GAME_CONFIG.width/2, GAME_CONFIG.height/2 + 120);
         this.ctx.fillText(`Time Played: ${this.formatTime(GameStats.timePlayed)}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2 + 160);
         
-        // Show device-appropriate restart instructions
-        if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
-            const restartBtn = document.getElementById('restart-button');
-            const startBtn = document.getElementById('start-button');
-            if (restartBtn) restartBtn.classList.remove('hidden');
-            if (startBtn) startBtn.classList.add('hidden');
-        } else {
-            this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
-        }
-        
         // Create victory effects
         this.createVictoryExplosions();
-        
-        // Stop the game loop to avoid re-rendering
-        this.state.isRunning = false;
-        
-        // Setup event listener for restart
-        const restartHandler = (e) => {
-            if (e.key === 'Enter') {
-                window.removeEventListener('keydown', restartHandler);
-                this.startGame();
+
+        // Important: Update the DOM elements before continuing
+        setTimeout(() => {
+            // Update UI visibility for all device types
+            const startBtn = document.getElementById('start-button');
+            const restartBtn = document.getElementById('restart-button');
+            const muteBtn = document.getElementById('mute-button');
+            
+            // Make sure buttons are properly visible/hidden
+            if (startBtn) {
+                startBtn.classList.add('hidden');
+                console.log("Start button hidden");
             }
-        };
-        
-        window.addEventListener('keydown', restartHandler);
+            
+            if (restartBtn) {
+                restartBtn.classList.remove('hidden');
+                console.log("Restart button shown");
+                
+                // Re-bind the event listener to ensure it works
+                restartBtn.onclick = () => {
+                    console.log("Restart button clicked");
+                    this.startGame();
+                };
+            }
+            
+            // Show device-appropriate restart instructions
+            if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
+                this.ctx.font = '24px Arial';
+                this.ctx.fillStyle = '#fff';
+                this.ctx.fillText('Tap RESTART to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.65);
+            } else {
+                this.ctx.font = '24px Arial';
+                this.ctx.fillStyle = '#fff';
+                this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.65);
+            }
+            
+            // Setup event listener for keyboard restart
+            const restartHandler = (e) => {
+                if (e.key === 'Enter') {
+                    console.log("Enter key pressed for restart");
+                    window.removeEventListener('keydown', restartHandler);
+                    this.startGame();
+                }
+            };
+            
+            window.addEventListener('keydown', restartHandler);
+            
+        }, 500); // Small delay to ensure DOM updates properly
     }
     
     // Add a celebratory effect for victory
