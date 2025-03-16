@@ -560,6 +560,9 @@ class Game {
             desynchronized: true // Reduce latency if supported
         });
         
+        // Initialize particle system before using it (this was missing)
+        this.particleSystem = new ParticleSystem();
+        
         // Create spatial grid for collision detection optimization
         this.spatialGrid = new SpatialGrid(GAME_CONFIG.width, GAME_CONFIG.height, 80);
         
