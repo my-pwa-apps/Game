@@ -576,7 +576,7 @@ class Bullet {
 class Game {
     constructor() {
         this.domCache = {
-            canvas: document.getElementById('game-canvas'),
+            canvas: document.getElementById('gameCanvas'),
             score: document.getElementById('score'),
             lives: document.getElementById('lives'),
             startButton: document.getElementById('start-button'),
