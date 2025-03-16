@@ -585,6 +585,10 @@ class Game {
         };
 
         this.canvas = this.domCache.canvas;
+        if (!this.canvas) {
+            throw new Error('Canvas element with id "gameCanvas" not found! Make sure the page is fully loaded.');
+        }
+        
         this.ctx = this.canvas.getContext('2d', { 
             alpha: false, // Optimization: disable alpha for better performance
             desynchronized: true // Reduce latency if supported
@@ -3749,9 +3753,13 @@ class Enemy {
 
 // Initialize the game when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    const game = new Game();
-    game.init(); // This line was missing
-    game.prepareBackgroundStars();
-    game.state.gameState = GameState.MENU;
-    game.start();
+    try {
+        const game = new Game();
+        game.init();
+        game.prepareBackgroundStars();
+        game.state.gameState = GameState.MENU;
+        game.start();
+    } catch (error) {
+        console.error('Failed to initialize game:', error);
+    }
 });
