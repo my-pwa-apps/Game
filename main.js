@@ -7970,3 +7970,435 @@ class Enemy {
         ctx.save();
         ctx.translate(this.x + this.width * 0.3, this.y + this.height * 0.4);
         ctx.scale(1, 0.6);
+        ctx.arc(0, 0, this.width * 0.15, 0, Math.PI * 2);
+        ctx.restore();
+        
+        // Right eye - almond shaped 
+        ctx.save();
+        ctx.translate(this.x + this.width * 0.7, this.y + this.height * 0.4);
+        ctx.scale(1, 0.6);
+        ctx.arc(0, 0, this.width * 0.15, 0, Math.PI * 2);
+        ctx.restore();
+        ctx.fill();
+        
+        // Draw reflective highlights in eyes
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.25, this.y + this.height * 0.38, this.width * 0.05, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width * 0.65, this.y + this.height * 0.38, this.width * 0.05, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw small mouth
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width * 0.4, this.y + this.height * 0.7);
+        ctx.lineTo(this.x + this.width * 0.6, this.y + this.height * 0.7);
+        ctx.stroke();
+        
+        // Draw antenna
+        ctx.strokeStyle = '#5f0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width/2, this.y + this.height * 0.1);
+        ctx.lineTo(this.x + this.width/2, this.y - this.height * 0.1);
+        
+        // Antenna top
+        ctx.arc(this.x + this.width/2, this.y - this.height * 0.1, this.width * 0.08, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    drawAdvancedAlien(ctx) {
+        // Draw advanced alien creature with more details
+        
+        // Main body - different color for this alien type
+        ctx.fillStyle = '#f0f'; // Purple alien
+        
+        // Draw oval body
+        ctx.beginPath();
+        ctx.ellipse(this.x + this.width/2, this.y + this.height/2, this.width*0.45, this.height*0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw multiple eyes (3 eyes for advanced alien)
+        ctx.fillStyle = '#0ff'; // Cyan eyes
+        ctx.beginPath();
+        // Left eye
+        ctx.arc(this.x + this.width*0.25, this.y + this.height*0.35, this.width*0.1, 0, Math.PI * 2);
+        // Middle eye (slightly bigger)
+        ctx.arc(this.x + this.width*0.5, this.y + this.height*0.3, this.width*0.12, 0, Math.PI * 2);
+        // Right eye
+        ctx.arc(this.x + this.width*0.75, this.y + this.height*0.35, this.width*0.1, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw pupils
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width*0.25, this.y + this.height*0.35, this.width*0.04, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width*0.5, this.y + this.height*0.3, this.width*0.05, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width*0.75, this.y + this.height*0.35, this.width*0.04, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw tentacles at bottom
+        ctx.strokeStyle = '#f0f';
+        ctx.lineWidth = 3;
+        const baseY = this.y + this.height*0.7;
+        for (let i = 0; i < 4; i++) {
+            const startX = this.x + this.width * (0.3 + i * 0.15);
+            ctx.beginPath();
+            ctx.moveTo(startX, baseY);
+            // Create wavy tentacle
+            ctx.quadraticCurveTo(
+                startX + (i % 2 ? 5 : -5), 
+                baseY + this.height*0.2, 
+                startX + (i % 2 ? 10 : -10), 
+                baseY + this.height*0.35
+            );
+            ctx.stroke();
+        }
+        
+        // Draw mouth
+        ctx.fillStyle = '#400';
+        ctx.beginPath();
+        ctx.ellipse(this.x + this.width/2, this.y + this.height*0.6, this.width*0.2, this.height*0.1, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    drawBossAlien(ctx) {
+        // Create an intimidating alien overlord with crown-like features
+        
+        // Create a metallic gradient for the boss alien
+        const bodyGradient = ctx.createLinearGradient(
+            this.x, this.y,
+            this.x, this.y + this.height
+        );
+        bodyGradient.addColorStop(0, '#f55'); // Light red
+        bodyGradient.addColorStop(0.5, '#900'); // Mid-dark red
+        bodyGradient.addColorStop(1, '#600'); // Dark red
+        
+        // Draw main body - larger and more imposing
+        ctx.fillStyle = bodyGradient;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width * 0.5, this.y + this.height * 0.15); // Top center
+        ctx.lineTo(this.x + this.width * 0.8, this.y + this.height * 0.3); // Upper right
+        ctx.lineTo(this.x + this.width * 0.9, this.y + this.height * 0.7); // Lower right
+        ctx.lineTo(this.x + this.width * 0.5, this.y + this.height * 0.9); // Bottom center
+        ctx.lineTo(this.x + this.width * 0.1, this.y + this.height * 0.7); // Lower left
+        ctx.lineTo(this.x + this.width * 0.2, this.y + this.height * 0.3); // Upper left
+        ctx.closePath();
+        ctx.fill();
+        
+        // Add armor plating details
+        ctx.strokeStyle = '#ff0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width * 0.2, this.y + this.height * 0.4);
+        ctx.lineTo(this.x + this.width * 0.8, this.y + this.height * 0.4);
+        ctx.moveTo(this.x + this.width * 0.3, this.y + this.height * 0.6);
+        ctx.lineTo(this.x + this.width * 0.7, this.y + this.height * 0.6);
+        ctx.stroke();
+        
+        // Draw crown/spikes on top
+        ctx.fillStyle = '#ff0'; // Gold crown
+        ctx.beginPath();
+        // Left spike
+        ctx.moveTo(this.x + this.width * 0.2, this.y + this.height * 0.2);
+        ctx.lineTo(this.x + this.width * 0.25, this.y - this.height * 0.1);
+        ctx.lineTo(this.x + this.width * 0.35, this.y + this.height * 0.15);
+        // Middle spike (taller)
+        ctx.moveTo(this.x + this.width * 0.4, this.y + this.height * 0.1);
+        ctx.lineTo(this.x + this.width * 0.5, this.y - this.height * 0.2);
+        ctx.lineTo(this.x + this.width * 0.6, this.y + this.height * 0.1);
+        // Right spike
+        ctx.moveTo(this.x + this.width * 0.65, this.y + this.height * 0.15);
+        ctx.lineTo(this.x + this.width * 0.75, this.y - this.height * 0.1);
+        ctx.lineTo(this.x + this.width * 0.8, this.y + this.height * 0.2);
+        ctx.fill();
+        
+        // Draw glowing eyes
+        const eyeGlow = ctx.createRadialGradient(
+            this.x + this.width * 0.35, this.y + this.height * 0.3, 0,
+            this.x + this.width * 0.35, this.y + this.height * 0.3, this.width * 0.12
+        );
+        eyeGlow.addColorStop(0, '#f00');
+        eyeGlow.addColorStop(0.7, '#f00');
+        eyeGlow.addColorStop(1, 'rgba(255, 0, 0, 0)');
+        
+        ctx.fillStyle = eyeGlow;
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.35, this.y + this.height * 0.3, this.width * 0.12, 0, Math.PI * 2);
+        ctx.fill();
+        
+        const eyeGlow2 = ctx.createRadialGradient(
+            this.x + this.width * 0.65, this.y + this.height * 0.3, 0,
+            this.x + this.width * 0.65, this.y + this.height * 0.3, this.width * 0.12
+        );
+        eyeGlow2.addColorStop(0, '#f00');
+        eyeGlow2.addColorStop(0.7, '#f00');
+        eyeGlow2.addColorStop(1, 'rgba(255, 0, 0, 0)');
+        
+        ctx.fillStyle = eyeGlow2;
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.65, this.y + this.height * 0.3, this.width * 0.12, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw solid eye centers (pupils)
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.35, this.y + this.height * 0.3, this.width * 0.05, 0, Math.PI * 2);
+        ctx.arc(this.x + this.width * 0.65, this.y + this.height * 0.3, this.width * 0.05, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Add evil mouth with sharp teeth
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width * 0.5, this.y + this.height * 0.65, this.width * 0.25, 0, Math.PI, false);
+        ctx.fill();
+        
+        // Add teeth
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+            const toothWidth = this.width * 0.06;
+            const startX = this.x + this.width * 0.3 + (i * toothWidth);
+            
+            // Triangle teeth
+            ctx.moveTo(startX, this.y + this.height * 0.65);
+            ctx.lineTo(startX + toothWidth/2, this.y + this.height * 0.75);
+            ctx.lineTo(startX + toothWidth, this.y + this.height * 0.65);
+        }
+        ctx.fill();
+        
+        // Add pulsing effect for the boss (using current time to oscillate)
+        const pulseAmount = Math.sin(Date.now() / 200) * 0.1 + 0.9;
+        if (pulseAmount > 0.95) {
+            // Add occasional flare/glow around the boss
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.2)'; // Semi-transparent to create trails
+            ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+            
+            // Draw explosions and particles
+            for (let i = 0; i < this.explosions.length; i++) {
+                this.explosions[i].update();
+                this.explosions[i].draw(this.ctx);
+            }
+            
+            // Continue render loop if explosions are still present
+            if (this.explosions.length > 0) {
+                requestAnimationFrame(victoryRenderLoop);
+            }
+        };
+        
+        // Start the victory render loop
+        requestAnimationFrame(victoryRenderLoop);
+        
+        // Important: Update the DOM elements before continuing
+        setTimeout(() => {
+            // Update UI visibility for all device types
+            const startBtn = document.getElementById('start-button');
+            const restartBtn = document.getElementById('restart-button');
+            const muteBtn = document.getElementById('mute-button');
+            
+            // Make sure buttons are properly visible/hidden
+            if (startBtn) {
+                startBtn.classList.add('hidden');
+                console.log("Start button hidden");
+            }
+            
+            if (restartBtn) {
+                restartBtn.classList.remove('hidden');
+                console.log("Restart button shown");
+                
+                // Re-bind the event listener to ensure it works
+                restartBtn.onclick = () => {
+                    console.log("Restart button clicked");
+                    this.startGame();
+                };
+            }
+            
+            // Show device-appropriate restart instructions
+            if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
+                this.ctx.font = '24px Arial';
+                this.ctx.fillStyle = '#fff';
+                this.ctx.fillText('Tap RESTART to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.65);
+            } else {
+                this.ctx.font = '24px Arial';
+                this.ctx.fillStyle = '#fff';
+                this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.65);
+            }
+            
+            // Setup event listener for keyboard restart
+            const restartHandler = (e) => {
+                if (e.key === 'Enter') {
+                    console.log("Enter key pressed for restart");
+                    window.removeEventListener('keydown', restartHandler);
+                    this.startGame();
+                }
+            };
+            
+            window.addEventListener('keydown', restartHandler);
+            
+        }, 500); // Small delay to ensure DOM updates properly
+    }
+    
+    // Add a celebratory effect for victory
+    createVictoryExplosions() {
+        console.log("Creating victory explosions"); // Debug log
+        // Create multiple colorful explosions at random positions
+        const colors = ['#0f0', '#00f', '#f0f', '#ff0', '#0ff'];
+        
+        const createRandomExplosion = (index) => {
+            this.setTrackedTimeout(() => {
+                const x = Math.random() * GAME_CONFIG.width;
+                const y = Math.random() * (GAME_CONFIG.height * 0.7);
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x, y, color,
+                        size: 20 + Math.random() * 40
+                    })
+                );
+                console.log(`Explosion ${index} created at (${x}, ${y}) with color ${color}`); // Debug log
+                
+                if (index < 20) { // Create 20 explosions
+                    createRandomExplosion(index + 1);
+                }
+            }, 200 + Math.random() * 300); // Random delay between explosions
+        };
+        
+        createRandomExplosion(0);
+    }
+
+    // Optimize handling of game events
+    handleGameEvent(eventType, data = {}) {
+        switch(eventType) {
+            case 'playerHit':
+                // Add screen shake effect
+                this.particleSystem.addScreenShake(10, 0.3);
+                
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x: data.x,
+                        y: data.y,
+                        color: '#0f8',
+                        size: 20
+                    })
+                );
+                this.state.lives--;
+                this.updateLives();
+                this.soundManager.playPlayerHit();
+                
+                // Make player invulnerable briefly
+                this.playerInvulnerable = true;
+                this.playerInvulnerableTime = 0;
+                
+                if (this.state.lives <= 0) {
+                    this.handleGameEvent('gameOver', {reason: "You ran out of lives!"});
+                }
+                break;
+                
+            case 'enemyDestroyed':
+                // Add particle effects for enemy explosions
+                this.particleSystem.addExplosion(data.x, data.y, data.enemy.type);
+                
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x: data.x, 
+                        y: data.y,
+                        color: '#f88',
+                        size: 30
+                    })
+                );
+                this.entities.delete(data.enemy);
+                this.state.score += 10;
+                this.soundManager.playExplosion();
+                this.updateScore();
+                break;
+                
+            case 'gameOver':
+                // Final explosion
+                this.explosions.push(
+                    this.explosionPool.get({
+                        x: this.player.x + this.player.width/2,
+                        y: this.player.y + this.player.height/2,
+                        color: '#0f0',
+                        size: 60
+                    })
+                );
+                this.gameOver(data.reason);
+                break;
+                
+            case 'levelComplete':
+                this.nextLevel();
+                break;
+                
+            case 'gameVictory':
+                this.victory();
+                break;
+        }
+    }
+
+    updateBonusShip(deltaTime) {
+        // Update existing bonus ship if present
+        if (this.bonusShip) {
+            if (!this.bonusShip.update(deltaTime)) {
+                this.bonusShip = null;
+            }
+            return;
+        }
+
+        // Random chance to spawn a bonus ship
+        if (Math.random() < GAME_CONFIG.bonusShipChance && this.state.gameState === GameState.PLAYING) {
+            this.bonusShip = new BonusShip();
+            this.soundManager.playBonusShip();
+        }
+    }
+
+    awardExtraLife() {
+        this.state.lives++;
+        this.updateLives();
+        
+        // Display a message
+        const messageEl = document.createElement('div');
+        messageEl.className = 'level-message';
+        messageEl.innerHTML = `LEVEL ${this.state.level} COMPLETE!<br>+1 LIFE`;
+        document.getElementById('game-container').appendChild(messageEl);
+        
+        // Remove after animation
+        this.setTrackedTimeout(() => {
+            messageEl.classList.add('fade-out');
+            this.setTrackedTimeout(() => messageEl.remove(), 1000);
+        }, 2000);
+    }
+
+    /**
+     * Updates the lives display in the DOM
+     */
+    updateLives() {
+        document.getElementById('lives').textContent = `Lives: ${this.state.lives}`;
+    }
+
+    /**
+     * Updates the score display in the DOM
+     */
+    updateScore() {
+        document.getElementById('score').textContent = `Score: ${this.state.score}`;
+    }
+
+    renderMenu() {
+        // Draw animated stars instead of static background
+        this.particleSystem.drawStarfield(this.ctx);
+        
+        // Add animated title with pulsing effect
+        const pulseAmount = Math.sin(Date.now() / 500) * 0.1 + 1;
+        
+        this.ctx.shadowColor = '#0f0';
+        this.ctx.shadowBlur = 15;
+        this.ctx.fillStyle = '#0f0';
+        this.ctx.font = 'bold 60px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.save();
+        this.ctx.translate(GAME_CONFIG.width/2, GAME_CONFIG.height/4);
+        this.ctx.scale(pulseAmount, pulseAmount);
+        this.ctx.fillText('SPACE INVADERS', 0, 0);
+        this.ctx.restore();
+        
