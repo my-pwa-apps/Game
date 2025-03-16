@@ -717,19 +717,23 @@ class Game {
         const playerBullets = this.player.bullets;
         const enemies = [...this.entities].filter(e => e instanceof Enemy);
         
-        // Early return for victory condition
+        // Check if all enemies are destroyed
         if (enemies.length === 0 && !this.isTransitioningLevel) {
-            // ...existing victory condition code...
+            console.log("Level complete!");
             this.isTransitioningLevel = true;
             
             // Important: Need to clean up any remaining player bullets
             playerBullets.forEach(bullet => this.bulletPool.release(bullet));
             this.player.bullets = [];
             
+            console.log("Current level:", this.state.level, "Max level:", this.state.maxLevel);
+            
             // Check if this was the final level
             if (this.state.level >= this.state.maxLevel) {
-                this.handleGameEvent('gameVictory');
+                console.log("Triggering victory!");
+                this.victory(); // Call victory directly for more reliable execution
             } else {
+                console.log("Moving to next level");
                 this.handleGameEvent('levelComplete');
             }
             return;
@@ -1728,6 +1732,8 @@ class Game {
     }
 
     victory() {
+        console.log("Victory method called");
+        
         // Cancel any pending level transition and stop the game first
         this.isTransitioningLevel = false;
         this.stop();
@@ -1744,7 +1750,8 @@ class Game {
         const existingMessages = document.querySelectorAll('.level-message, .bonus-message');
         existingMessages.forEach(msg => msg.remove());
         
-        // Show victory screen
+        // Show victory screen - ensure canvas is properly cleared first
+        this.ctx.clearRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
         this.ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
         this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
         
@@ -1779,8 +1786,10 @@ class Game {
         
         // Show device-appropriate restart instructions
         if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
-            document.getElementById('restart-button').classList.remove('hidden');
-            document.getElementById('start-button').classList.add('hidden');
+            const restartBtn = document.getElementById('restart-button');
+            const startBtn = document.getElementById('start-button');
+            if (restartBtn) restartBtn.classList.remove('hidden');
+            if (startBtn) startBtn.classList.add('hidden');
         } else {
             this.ctx.fillText('Press ENTER to play again', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
         }
@@ -1788,8 +1797,8 @@ class Game {
         // Create victory effects
         this.createVictoryExplosions();
         
-        // Stop the game loop
-        this.stop();
+        // Stop the game loop to avoid re-rendering
+        this.state.isRunning = false;
         
         // Setup event listener for restart
         const restartHandler = (e) => {
@@ -2377,7 +2386,10 @@ class BonusShip {
     
     hit() {
         // When hit by player, apply bonus and create explosion
-        window.gameInstance.player.applyBonus(this.bonusType);
+        // We need to check which bonus type we got and ensure it's passed correctly
+        const bonusType = this.bonusType;
+        
+        // Create explosion 
         window.gameInstance.explosions.push(
             window.gameInstance.explosionPool.get({
                 x: this.x + this.width/2,
@@ -2386,7 +2398,52 @@ class BonusShip {
                 size: 40
             })
         );
+        
+        // Play sound first
         window.gameInstance.soundManager.playPowerupCollect();
+        
+        // Apply the bonus with a slight delay to ensure the game state is ready
+        setTimeout(() => {
+            if (window.gameInstance && window.gameInstance.player) {
+                // Apply the bonus to the player
+                if (bonusType === BonusType.EXTRA_LIFE) {
+                    window.gameInstance.state.lives++;
+                    window.gameInstance.updateLives();
+                    // Show message
+                    const messageEl = document.createElement('div');
+                    messageEl.className = 'bonus-message';
+                    messageEl.textContent = "EXTRA LIFE!";
+                    document.getElementById('game-container').appendChild(messageEl);
+                    setTimeout(() => {
+                        messageEl.classList.add('fade-out');
+                        setTimeout(() => messageEl.remove(), 1000);
+                    }, 2000);
+                } else if (bonusType === BonusType.SPEED_BOOST) {
+                    window.gameInstance.player.speedBoost = true;
+                    window.gameInstance.player.speed = 8;
+                    window.gameInstance.player.speedBoostEndTime = Date.now() + GAME_CONFIG.bonusDuration;
+                    // Show message
+                    const messageEl = document.createElement('div');
+                    messageEl.className = 'bonus-message';
+                    messageEl.textContent = "SPEED BOOST!";
+                    document.getElementById('game-container').appendChild(messageEl);
+                    setTimeout(() => {
+                        messageEl.classList.add('fade-out');
+                        setTimeout(() => messageEl.remove(), 1000);
+                    }, 2000);
+                } else {
+                    // Standard bonuses
+                    window.gameInstance.player.applyBonus(bonusType);
+                }
+                
+                // Log bonus application for debugging
+                console.log("Applied bonus:", bonusType);
+                
+                // Update game stats
+                GameStats.powerupsCollected++;
+            }
+        }, 10);
+        
         this.active = false;
     }
 }
