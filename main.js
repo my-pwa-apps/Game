@@ -1,334 +1,107 @@
+// Optimize rendering performance and memory usage
+
+// Constants - grouped at top for better minification
 const PLAYER_WIDTH = 50;
 const PLAYER_HEIGHT = 30;
 const ENEMY_WIDTH = 40;
 const ENEMY_HEIGHT = 30;
 const BULLET_WIDTH = 3;
 const BULLET_HEIGHT = 15;
-
-// Add bonus ship constants
 const BONUS_SHIP_WIDTH = 60;
 const BONUS_SHIP_HEIGHT = 20;
 
-// Add new bonus types enum to existing code
-const BonusType = {
-    RAPID_FIRE: 'rapidFire',
-    MULTI_SHOT: 'multiShot',
-    BULLET_SHIELD: 'bulletShield'
-};
+// Use requestIdleCallback for non-critical operations
+const scheduleIdleTask = window.requestIdleCallback || 
+    ((callback) => setTimeout(callback, 1));
 
-const GAME_CONFIG = {
-    width: 800,
-    height: 600,
-    fps: 60,
-    scale: window.devicePixelRatio || 1,
-    levels: [
-        {
-            enemyRows: 3,
-            enemySpeed: 1,
-            enemyType: 'basic'
-        },
-        {
-            enemyRows: 4,
-            enemySpeed: 1.2,
-            enemyType: 'advanced'
-        },
-        {
-            enemyRows: 5,
-            enemySpeed: 1.5,
-            enemyType: 'boss'
-        }
-    ],
-    bonusShipChance: 0.001,  // Chance per frame of bonus ship appearing
-    bonusDuration: 10000     // Duration of bonus effect in ms
-};
-
-// Fix circular reference by using a global audio context
-const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-class SoundManager {
-    constructor() {
-        this.audioContext = audioContext;
-        this.isMuted = false;
-    }
-
-    playShoot() {
-        if (this.isMuted) return;
-        const oscillator = this.audioContext.createOscillator();
-        const gainNode = this.audioContext.createGain();
-        
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(880, this.audioContext.currentTime);
-        oscillator.frequency.exponentialRampToValueAtTime(110, this.audioContext.currentTime + 0.1);
-        
-        gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(this.audioContext.destination);
-        
-        oscillator.start();
-        oscillator.stop(this.audioContext.currentTime + 0.1);
-    }
-
-    playExplosion() {
-        if (this.isMuted) return;
-        const oscillator = this.audioContext.createOscillator();
-        const gainNode = this.audioContext.createGain();
-        
-        oscillator.type = 'sawtooth';
-        oscillator.frequency.setValueAtTime(100, this.audioContext.currentTime);
-        oscillator.frequency.exponentialRampToValueAtTime(1, this.audioContext.currentTime + 0.2);
-        
-        gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(this.audioContext.destination);
-        
-        oscillator.start();
-        oscillator.stop(this.audioContext.currentTime + 0.2);
-    }
-
-    playAlienMove() {
-        if (this.isMuted) return;
-        const oscillator = this.audioContext.createOscillator();
-        const gainNode = this.audioContext.createGain();
-        
-        oscillator.type = 'square';
-        oscillator.frequency.setValueAtTime(150 + Math.random() * 30, this.audioContext.currentTime);
-        oscillator.frequency.exponentialRampToValueAtTime(50, this.audioContext.currentTime + 0.1);
-        
-        gainNode.gain.setValueAtTime(0.05, this.audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + 0.1);
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(this.audioContext.destination);
-        
-        oscillator.start();
-        oscillator.stop(this.audioContext.currentTime + 0.1);
-    }
-
-    toggleMute() {
-        this.isMuted = !this.isMuted;
-    }
-
-    playPlayerHit() {
-        if (this.isMuted) return;
-        const oscillator = this.audioContext.createOscillator();
-        const gainNode = this.audioContext.createGain();
-        
-        oscillator.type = 'triangle';
-        oscillator.frequency.setValueAtTime(200, this.audioContext.currentTime);
-        oscillator.frequency.exponentialRampToValueAtTime(50, this.audioContext.currentTime + 0.3);
-        
-        gainNode.gain.setValueAtTime(0.4, this.audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(this.audioContext.destination);
-        
-        oscillator.start();
-        oscillator.stop(this.audioContext.currentTime + 0.3);
-    }
-
-    playBulletCollision() {
-        if (this.isMuted) return;
-        const oscillator = this.audioContext.createOscillator();
-        const gainNode = this.audioContext.createGain();
-        
-        oscillator.type = 'triangle';
-        oscillator.frequency.setValueAtTime(440, this.audioContext.currentTime);
-        oscillator.frequency.exponentialRampToValueAtTime(220, this.audioContext.currentTime + 0.05);
-        
-        gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.05);
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(this.audioContext.destination);
-        
-        oscillator.start();
-        oscillator.stop(this.audioContext.currentTime + 0.05);
-    }
-
-    playBonusShip() {
-        if (this.isMuted) return;
-        const oscillator = this.audioContext.createOscillator();
-        const gainNode = this.audioContext.createGain();
-        
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(660, this.audioContext.currentTime);
-        oscillator.frequency.exponentialRampToValueAtTime(440, this.audioContext.currentTime + 0.3);
-        
-        gainNode.gain.setValueAtTime(0.2, this.audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(this.audioContext.destination);
-        
-        oscillator.start();
-        oscillator.stop(this.audioContext.currentTime + 0.3);
-    }
-
-    playPowerupCollect() {
-        if (this.isMuted) return;
-        
-        // Play ascending notes for powerup
-        this._playOscillator('sine', 440, 880, 0.2, 0.1);
-        
-        setTimeout(() => {
-            this._playOscillator('sine', 660, 990, 0.2, 0.1);
-        }, 100);
-        
-        setTimeout(() => {
-            this._playOscillator('sine', 880, 1320, 0.2, 0.1);
-        }, 200);
+// Optimize collision detection with spatial partitioning
+class SpatialGrid {
+    constructor(width, height, cellSize) {
+        this.cellSize = cellSize;
+        this.cols = Math.ceil(width / cellSize);
+        this.rows = Math.ceil(height / cellSize);
+        this.grid = new Array(this.cols * this.rows).fill().map(() => []);
     }
     
-    _playOscillator(type, freqStart, freqEnd, gain, duration) {
-        if (this.isMuted) return;
-        const oscillator = this.audioContext.createOscillator();
-        const gainNode = this.audioContext.createGain();
+    clear() {
+        for (let i = 0; i < this.grid.length; i++) {
+            this.grid[i].length = 0;
+        }
+    }
+    
+    getIndex(x, y) {
+        const col = Math.floor(x / this.cellSize);
+        const row = Math.floor(y / this.cellSize);
+        if (col < 0 || col >= this.cols || row < 0 || row >= this.rows) return -1;
+        return row * this.cols + col;
+    }
+    
+    insert(entity) {
+        const index = this.getIndex(entity.x + entity.width/2, entity.y + entity.height/2);
+        if (index !== -1) {
+            this.grid[index].push(entity);
+        }
+    }
+    
+    getPotentialCollisions(entity) {
+        // Get indices of surrounding cells
+        const x = entity.x + entity.width/2;
+        const y = entity.y + entity.height/2;
+        const col = Math.floor(x / this.cellSize);
+        const row = Math.floor(y / this.cellSize);
+        const result = [];
         
-        oscillator.type = type;
-        oscillator.frequency.setValueAtTime(freqStart, this.audioContext.currentTime);
-        oscillator.frequency.exponentialRampToValueAtTime(freqEnd, this.audioContext.currentTime + duration);
+        for (let r = Math.max(0, row - 1); r <= Math.min(this.rows - 1, row + 1); r++) {
+            for (let c = Math.max(0, col - 1); c <= Math.min(this.cols - 1, col + 1); c++) {
+                const index = r * this.cols + c;
+                result.push(...this.grid[index]);
+            }
+        }
         
-        gainNode.gain.setValueAtTime(gain, this.audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(this.audioContext.destination);
-        
-        oscillator.start();
-        oscillator.stop(this.audioContext.currentTime + duration);
+        return result;
     }
 }
 
-// Add game state constants for better state management
-const GameState = {
-    MENU: 'menu',
-    PLAYING: 'playing',
-    PAUSED: 'paused',
-    GAME_OVER: 'gameOver',
-    LEVEL_COMPLETE: 'levelComplete'
-};
-
-// Optimize ObjectPool for better memory management
-class ObjectPool {
-    constructor(objectType, initialSize = 20) {
-        this.objectType = objectType;
-        this.pool = [];
-        this.activeObjects = new Set(); // Track active objects
-        this.grow(initialSize);
-    }
-    
-    grow(size) {
-        for (let i = 0; i < size; i++) {
-            this.pool.push(new this.objectType());
-        }
-    }
-    
-    get(params = {}) {
-        if (this.pool.length === 0) {
-            this.grow(5);
-        }
-        
-        const object = this.pool.pop();
-        object.reset(params);
-        this.activeObjects.add(object); // Track object as active
-        return object;
-    }
-    
-    release(object) {
-        this.activeObjects.delete(object); // Remove from active tracking
-        this.pool.push(object);
-    }
-    
-    // New method to release all objects (useful for cleanup)
-    releaseAll() {
-        this.activeObjects.forEach(obj => this.pool.push(obj));
-        this.activeObjects.clear();
-    }
-}
-
-// Improved explosion class with object pooling support
-class Explosion {
-    constructor() {
-        this.x = 0;
-        this.y = 0;
-        this.size = 30;
-        this.color = '#ff0';
-        this.lifetime = 30;
-        this.age = 0;
-        this.particles = [];
-        this.active = false;
-    }
-    
-    reset({x, y, color = '#ff0', size = 30}) {
-        this.x = x;
-        this.y = y;
-        this.size = size;
-        this.color = color;
-        this.age = 0;
-        this.active = true;
-        this.particles = [];
-        this.createParticles();
-        return this;
-    }
-    
-    createParticles() {
-        const particleCount = 20;
-        for (let i = 0; i < particleCount; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const speed = 0.5 + Math.random() * 2;
-            this.particles.push({
-                x: 0,
-                y: 0,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
-                size: 1 + Math.random() * 3,
-                alpha: 1
-            });
-        }
-    }
-    
-    update() {
-        this.age++;
-        
-        for (const particle of this.particles) {
-            particle.x += particle.vx;
-            particle.y += particle.vy;
-            particle.alpha = 1 - (this.age / this.lifetime);
-        }
-        
-        if (this.age >= this.lifetime) {
-            this.active = false;
-        }
-        
-        return this.active;
-    }
-    
-    draw(ctx) {
-        ctx.save();
-        ctx.translate(this.x, this.y);
-        
-        for (const particle of this.particles) {
-            ctx.globalAlpha = particle.alpha;
-            ctx.fillStyle = this.color;
-            ctx.beginPath();
-            ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        
-        ctx.restore();
-    }
-}
-
-// Fix and add missing methods to Game class
+// Optimize game class with performance improvements
 class Game {
     constructor() {
-        this.canvas = document.getElementById('gameCanvas');
-        this.ctx = this.canvas.getContext('2d', { alpha: false });
+        // Cache DOM elements for better performance
+        this.domCache = {
+            canvas: document.getElementById('gameCanvas'),
+            gameContainer: document.getElementById('game-container'),
+            fps: document.getElementById('fps'),
+            score: document.getElementById('score'),
+            lives: document.getElementById('lives'),
+            startButton: document.getElementById('start-button'),
+            muteButton: document.getElementById('mute-button'),
+            restartButton: document.getElementById('restart-button')
+        };
+
+        this.canvas = this.domCache.canvas;
+        this.ctx = this.canvas.getContext('2d', { 
+            alpha: false, // Optimization: disable alpha for better performance
+            desynchronized: true // Reduce latency if supported
+        });
+        
+        // Create spatial grid for collision detection optimization
+        this.spatialGrid = new SpatialGrid(GAME_CONFIG.width, GAME_CONFIG.height, 80);
+        
+        // Use layered canvases for better performance
+        this.setupLayeredCanvas();
+        
+        // Pre-render common game elements
+        this.preRenderGameElements();
+        
+        // Create adaptive quality settings
+        this.qualitySettings = this.detectOptimalQuality();
+        
+        // Throttle frame-intensive functions
+        this.updateFPS = this.throttle(this.updateFPS.bind(this), 500);
+        
+        // Set up performance monitor
+        this.setupPerformanceMonitor();
+        
+        // ...remaining constructor code...
         this.frameCount = 0;
         this.lastTime = 0;
         this.accumulator = 0;
@@ -418,7 +191,429 @@ class Game {
         // Initialize the game but defer enemy creation until after method definitions
         this.init();
     }
+    
+    setupLayeredCanvas() {
+        // Create separate canvases for different layers
+        this.backgroundCanvas = document.createElement('canvas');
+        this.backgroundCanvas.width = GAME_CONFIG.width;
+        this.backgroundCanvas.height = GAME_CONFIG.height;
+        this.bgCtx = this.backgroundCanvas.getContext('2d', { alpha: false });
+        
+        // Pre-render common game elements for reuse
+        this.offscreenCanvas = document.createElement('canvas');
+        this.offscreenCanvas.width = GAME_CONFIG.width;
+        this.offscreenCanvas.height = GAME_CONFIG.height;
+        this.offscreenCtx = this.offscreenCanvas.getContext('2d');
+    }
+    
+    preRenderGameElements() {
+        // Pre-render player ship for reuse
+        this.playerShipCanvas = document.createElement('canvas');
+        this.playerShipCanvas.width = PLAYER_WIDTH * 1.5;
+        this.playerShipCanvas.height = PLAYER_HEIGHT * 1.5;
+        const shipCtx = this.playerShipCanvas.getContext('2d');
+        
+        // Draw player ship on offscreen canvas
+        shipCtx.fillStyle = '#0f0';
+        shipCtx.beginPath();
+        shipCtx.moveTo(PLAYER_WIDTH/2, 0);
+        shipCtx.lineTo(PLAYER_WIDTH, PLAYER_HEIGHT);
+        shipCtx.lineTo(0, PLAYER_HEIGHT);
+        shipCtx.closePath();
+        shipCtx.fill();
+        
+        // Draw cockpit
+        shipCtx.fillStyle = '#00f';
+        shipCtx.beginPath();
+        shipCtx.arc(PLAYER_WIDTH/2, PLAYER_HEIGHT * 0.4, PLAYER_WIDTH * 0.15, 0, Math.PI * 2);
+        shipCtx.fill();
+        
+        // Similar pre-renders for enemy types, bullets, etc.
+        // ...
+    }
+    
+    // Optimize collision detection with spatial partitioning
+    checkCollisions() {
+        const playerBullets = this.player.bullets;
+        const enemies = [...this.entities].filter(e => e instanceof Enemy);
+        
+        // Early return for victory condition
+        if (enemies.length === 0 && !this.isTransitioningLevel) {
+            // ...existing victory condition code...
+            this.isTransitioningLevel = true;
+            
+            // Important: Need to clean up any remaining player bullets
+            playerBullets.forEach(bullet => this.bulletPool.release(bullet));
+            this.player.bullets = [];
+            
+            // Check if this was the final level
+            if (this.state.level >= this.state.maxLevel) {
+                this.handleGameEvent('gameVictory');
+            } else {
+                this.handleGameEvent('levelComplete');
+            }
+            return;
+        }
+        
+        // Use spatial partitioning for collision detection
+        this.spatialGrid.clear();
+        
+        // Insert entities into spatial grid
+        enemies.forEach(enemy => this.spatialGrid.insert(enemy));
+        playerBullets.forEach(bullet => this.spatialGrid.insert(bullet));
+        
+        // Check player bullets with potential collisions
+        for (let i = playerBullets.length - 1; i >= 0; i--) {
+            const bullet = playerBullets[i];
+            
+            // Check bonus ship collision
+            if (this.bonusShip && this.checkCollision(bullet, this.bonusShip)) {
+                this.bonusShip.hit();
+                this.bulletPool.release(bullet);
+                playerBullets.splice(i, 1);
+                continue;
+            }
+            
+            // Get potential collision candidates for this bullet
+            const potentialCollisions = this.spatialGrid.getPotentialCollisions(bullet);
+            let hitEnemy = false;
+            
+            // Check for actual collisions with candidates
+            for (const entity of potentialCollisions) {
+                if (entity instanceof Enemy && this.checkCollision(bullet, entity)) {
+                    GameStats.shotsHit++;
+                    GameStats.enemiesDestroyed++;
+                    
+                    this.handleGameEvent('enemyDestroyed', {
+                        enemy: entity,
+                        x: entity.x + entity.width/2,
+                        y: entity.y + entity.height/2
+                    });
+                    
+                    this.bulletPool.release(bullet);
+                    playerBullets.splice(i, 1);
+                    hitEnemy = true;
+                    
+                    // Potential powerup
+                    if (Math.random() < 0.05) {
+                        this.spawnPowerUpDrop(entity.x + entity.width/2, entity.y + entity.height/2);
+                    }
+                    break;
+                }
+            }
+            
+            if (hitEnemy) continue;
+            
+            // Handle bullet-bullet collisions and other logic
+            // ...existing bullet collision code...
+            let bulletHit = false;
+            enemyLoop: for (const enemy of enemies) {
+                for (let j = enemy.bullets.length - 1; j >= 0; j--) {
+                    const enemyBullet = enemy.bullets[j];
+                    
+                    if (this.checkBulletCollision(bullet, enemyBullet)) {
+                        // Create small explosion where bullets collided
+                        this.explosions.push(
+                            this.explosionPool.get({
+                                x: (bullet.x + enemyBullet.x) / 2,
+                                y: (bullet.y + enemyBullet.y) / 2,
+                                color: '#fff',
+                                size: 15
+                            })
+                        );
+                        
+                        // Play sound effect
+                        this.soundManager.playBulletCollision();
+                        
+                        // Remove both bullets
+                        this.bulletPool.release(playerBullets[i]);
+                        playerBullets.splice(i, 1);
+                        this.bulletPool.release(enemyBullet);
+                        enemy.bullets.splice(j, 1);
+                        
+                        bulletHit = true;
+                        break enemyLoop;
+                    }
+                }
+            }
+            
+            if (bulletHit) continue;
 
+            // Track shots fired
+            GameStats.shotsFired++;
+        }
+        
+        // Enemy bullets hitting player - only if player is not invulnerable or shield active
+        if (!this.playerInvulnerable && 
+            !(this.player.hasBonus && this.player.bonusType === BonusType.BULLET_SHIELD)) {
+            for (const enemy of enemies) {
+                for (let i = enemy.bullets.length - 1; i >= 0; i--) {
+                    const bullet = enemy.bullets[i];
+                    
+                    if (this.checkCollision(bullet, this.player)) {
+                        // Return bullet to pool
+                        this.bulletPool.release(bullet);
+                        enemy.bullets.splice(i, 1);
+                        
+                        this.handleGameEvent('playerHit', {
+                            x: bullet.x, 
+                            y: bullet.y
+                        });
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Check collisions with power-up drops
+        const powerUps = [...this.entities].filter(e => e instanceof PowerUpDrop);
+        for (let i = powerUps.length - 1; i >= 0; i--) {
+            const powerUp = powerUps[i];
+            if (this.checkCollision(this.player, powerUp)) {
+                powerUp.collect();
+                this.entities.delete(powerUp);
+            }
+        }
+    }
+    
+    // Throttle function for rate-limiting expensive operations
+    throttle(func, limit) {
+        let inThrottle;
+        return function() {
+            const args = arguments;
+            const context = this;
+            if (!inThrottle) {
+                func.apply(context, args);
+                inThrottle = true;
+                setTimeout(() => inThrottle = false, limit);
+            }
+        };
+    }
+    
+    // Optimize render method
+    render() {
+        // Skip rendering if game is not visible
+        if (document.hidden) {
+            requestAnimationFrame(this.gameLoop.bind(this));
+            return;
+        }
+        
+        // Clear the canvas efficiently
+        this.ctx.fillStyle = '#000';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        // Draw the background without saving context (more efficient)
+        this.ctx.drawImage(this.backgroundCanvas, 0, 0);
+        
+        // Apply screen shake if active
+        let shakeX = 0, shakeY = 0;
+        if (this.particleSystem.screenShake.active) {
+            const {x, y} = this.particleSystem.screenShake.getOffset();
+            shakeX = x;
+            shakeY = y;
+            this.ctx.translate(x, y);
+        }
+        
+        // Handle specific game states
+        if (this.state.gameState === GameState.MENU) {
+            this.renderMenu();
+            // Restore translation if needed
+            if (shakeX !== 0 || shakeY !== 0) {
+                this.ctx.translate(-shakeX, -shakeY);
+            }
+            return;
+        }
+        
+        if (this.state.gameState === GameState.PAUSED) {
+            this.renderPauseScreen();
+            return;
+        }
+        
+        // Draw player with blinking effect
+        if (!this.playerInvulnerable || Math.floor(Date.now() / 100) % 2) {
+            // Use pre-rendered player ship if not using power-ups
+            if (!this.player.hasBonus) {
+                this.ctx.drawImage(
+                    this.playerShipCanvas, 
+                    this.player.x - PLAYER_WIDTH/4, 
+                    this.player.y - PLAYER_HEIGHT/4
+                );
+            } else {
+                this.player.draw(this.ctx);
+            }
+        }
+        
+        // Batch similar draw operations for better performance
+        
+        // Draw all bullets in one batch
+        this.ctx.fillStyle = '#fff';
+        this.player.bullets.forEach(bullet => {
+            if (!bullet.enemyBullet) {
+                bullet.draw(this.ctx);
+            }
+        });
+        
+        // Draw enemy bullets in one batch
+        this.ctx.fillStyle = '#ff0';
+        for (const entity of this.entities) {
+            if (entity instanceof Enemy) {
+                entity.bullets.forEach(bullet => bullet.draw(this.ctx));
+            }
+        }
+        
+        // Draw all enemies (batched by type if possible)
+        this.entities.forEach(entity => {
+            if (entity instanceof Enemy) {
+                entity.draw(this.ctx);
+            } else if (!(entity instanceof Player)) {
+                entity.draw(this.ctx);
+            }
+        });
+        
+        // Draw bonus ship if active
+        if (this.bonusShip) {
+            this.bonusShip.draw(this.ctx);
+        }
+        
+        // Draw explosions and particles with batching
+        if (this.explosions.length > 0 || this.particleSystem.particles.length > 0) {
+            // Sort particles by color for batch rendering
+            const particlesByColor = {};
+            
+            this.particleSystem.particles.forEach(p => {
+                if (!particlesByColor[p.color]) {
+                    particlesByColor[p.color] = [];
+                }
+                particlesByColor[p.color].push(p);
+            });
+            
+            // Draw particles in batches by color
+            Object.entries(particlesByColor).forEach(([color, particles]) => {
+                this.ctx.fillStyle = color;
+                particles.forEach(p => {
+                    this.ctx.globalAlpha = 1 - (p.age / p.lifespan);
+                    this.ctx.beginPath();
+                    this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    this.ctx.fill();
+                });
+            });
+            
+            // Reset global alpha
+            this.ctx.globalAlpha = 1;
+            
+            // Draw explosions
+            this.explosions.forEach(explosion => explosion.draw(this.ctx));
+        }
+        
+        // Restore any transformations
+        if (shakeX !== 0 || shakeY !== 0) {
+            this.ctx.translate(-shakeX, -shakeY);
+        }
+    }
+    
+    // Optimize game loop with better time management
+    gameLoop(timestamp) {
+        if (!this.state.isRunning) return;
+        
+        // Calculate frame delta and cap it
+        const deltaTime = Math.min(timestamp - this.lastTime, 100);
+        this.lastTime = timestamp;
+        
+        // Skip updates if tab is not visible (battery saving)
+        if (!document.hidden) {
+            this.accumulator += deltaTime;
+            
+            // Process fixed time step updates
+            let updateCount = 0;
+            const MAX_UPDATES = 5;
+            
+            while (this.accumulator >= this.timeStep && updateCount < MAX_UPDATES) {
+                this.update(this.timeStep);
+                this.accumulator -= this.timeStep;
+                updateCount++;
+            }
+            
+            // Reset accumulator if too much time passed
+            if (updateCount >= MAX_UPDATES) {
+                this.accumulator = 0;
+            }
+            
+            // Render the frame
+            this.render();
+            this.framesThisSecond++;
+        }
+        
+        // Continue the loop
+        requestAnimationFrame(this.gameLoop.bind(this));
+    }
+    
+    // Detect optimal quality settings based on device capabilities
+    detectOptimalQuality() {
+        const isPowerfulDevice = (() => {
+            // Check for high-end device indicators
+            const hasHighEndGPU = (
+                window.navigator.userAgent.indexOf('Chrome') > -1 &&
+                window.navigator.hardwareConcurrency > 4
+            );
+            const isHighDensityScreen = window.devicePixelRatio > 1;
+            const isLargeScreen = window.screen.width > 1024;
+            
+            return hasHighEndGPU && isHighDensityScreen && isLargeScreen;
+        })();
+        
+        return {
+            maxParticles: isPowerfulDevice ? 500 : 200,
+            useShaders: isPowerfulDevice,
+            drawShadows: isPowerfulDevice,
+            particleDetail: isPowerfulDevice ? 'high' : 'low'
+        };
+    }
+    
+    // Set up a performance monitor
+    setupPerformanceMonitor() {
+        if (!window.performance || !window.performance.memory) return;
+        
+        this.performanceStats = {
+            lastCheck: performance.now(),
+            frameTime: 0,
+            memoryUsed: 0,
+            frameTimeHistory: []
+        };
+        
+        // Sample performance data periodically
+        setInterval(() => {
+            const now = performance.now();
+            const frameTime = now - this.performanceStats.lastCheck;
+            this.performanceStats.lastCheck = now;
+            
+            this.performanceStats.frameTime = frameTime;
+            this.performanceStats.frameTimeHistory.push(frameTime);
+            
+            // Limit history array size
+            if (this.performanceStats.frameTimeHistory.length > 60) {
+                this.performanceStats.frameTimeHistory.shift();
+            }
+            
+            // Calculate average frame time
+            const avgFrameTime = this.performanceStats.frameTimeHistory.reduce((a, b) => a + b, 0) / 
+                this.performanceStats.frameTimeHistory.length;
+            
+            // Memory usage (only in Chrome)
+            if (window.performance.memory) {
+                this.performanceStats.memoryUsed = window.performance.memory.usedJSHeapSize / (1024 * 1024);
+            }
+            
+            // Automatically adjust quality if performance is poor
+            if (avgFrameTime > 33) { // Less than 30 FPS
+                this.qualitySettings.maxParticles = Math.max(50, this.qualitySettings.maxParticles - 50);
+                this.qualitySettings.drawShadows = false;
+            }
+            
+        }, 1000);
+    }
+    
+    // Additional optimized methods...
+    // ...
     init() {
         this.setupCanvas();
         this.bindEvents();
@@ -429,6 +624,7 @@ class Game {
         this.bindKeys();
         this.bindSwipeControls();
         this.bindMenuControls(); // Add this line
+        this.bindTouchControls(); // Add this line to enable mobile controls
         
         this.createInitialEnemies();
     }
@@ -775,8 +971,18 @@ class Game {
     update(deltaTime) {
         if (this.state.gameState !== GameState.PLAYING) return;
         
+        // Update game timer for statistics
+        const now = Date.now();
+        if (now - this.lastTimeUpdate >= 1000) {
+            GameStats.timePlayed += Math.floor((now - this.lastTimeUpdate) / 1000);
+            this.lastTimeUpdate = now;
+        }
+        
         // Calculate frame rate compensation multiplier
-        this.deltaMultiplier = deltaTime / (1000/60); // Target 60 FPS
+        this.deltaMultiplier = Math.min(Math.max(deltaTime / (1000/60), 0.5), 2.0);
+        
+        // Update particle effects
+        this.particleSystem.update(this.deltaMultiplier);
         
         // Update player invulnerability
         if (this.playerInvulnerable) {
@@ -843,6 +1049,12 @@ class Game {
                 }
             }
         }
+
+        // Update player speed boost if active
+        if (this.player.speedBoost && now > this.player.speedBoostEndTime) {
+            this.player.speedBoost = false;
+            this.player.speed = 5; // Reset to default speed
+        }
     }
     
     updateEnemyMovement(deltaTime) {
@@ -883,120 +1095,6 @@ class Game {
         // Move all enemies horizontally
         for (const enemy of enemies) {
             enemy.move(enemy.direction);
-        }
-    }
-
-    checkCollisions() {
-        const playerBullets = this.player.bullets;
-        const enemies = [...this.entities].filter(e => e instanceof Enemy);
-        
-        // Early return if no enemies and transition to victory/next level
-        if (enemies.length === 0 && !this.isTransitioningLevel) {
-            this.isTransitioningLevel = true;
-            
-            // Important: Need to clean up any remaining player bullets
-            playerBullets.forEach(bullet => this.bulletPool.release(bullet));
-            this.player.bullets = [];
-            
-            // Check if this was the final level
-            if (this.state.level >= this.state.maxLevel) {
-                this.handleGameEvent('gameVictory');
-            } else {
-                this.handleGameEvent('levelComplete');
-            }
-            return;
-        }
-
-        // Player bullets hitting enemies
-        for (let i = playerBullets.length - 1; i >= 0; i--) {
-            if (i >= playerBullets.length) continue; // Safety check
-            const bullet = playerBullets[i];
-            
-            // Check player bullets hitting bonus ship
-            if (this.bonusShip && this.checkCollision(bullet, this.bonusShip)) {
-                this.bonusShip.hit();
-                this.bulletPool.release(playerBullets[i]);
-                playerBullets.splice(i, 1);
-                continue;
-            }
-            
-            // Check player bullets hitting enemies
-            let hitEnemy = false;
-            for (let j = enemies.length - 1; j >= 0; j--) {
-                const enemy = enemies[j];
-                
-                if (this.checkCollision(bullet, enemy)) {
-                    this.handleGameEvent('enemyDestroyed', {
-                        enemy: enemy,
-                        x: enemy.x + enemy.width/2,
-                        y: enemy.y + enemy.height/2
-                    });
-                    
-                    this.bulletPool.release(playerBullets[i]);
-                    playerBullets.splice(i, 1);
-                    hitEnemy = true;
-                    break;
-                }
-            }
-            
-            // Skip further checks if we already hit an enemy
-            if (hitEnemy) continue;
-            
-            // Check for bullets hitting enemy bullets (bullet defense)
-            let bulletHit = false;
-            enemyLoop: for (const enemy of enemies) {
-                for (let j = enemy.bullets.length - 1; j >= 0; j--) {
-                    const enemyBullet = enemy.bullets[j];
-                    
-                    if (this.checkBulletCollision(bullet, enemyBullet)) {
-                        // Create small explosion where bullets collided
-                        this.explosions.push(
-                            this.explosionPool.get({
-                                x: (bullet.x + enemyBullet.x) / 2,
-                                y: (bullet.y + enemyBullet.y) / 2,
-                                color: '#fff',
-                                size: 15
-                            })
-                        );
-                        
-                        // Play sound effect
-                        this.soundManager.playBulletCollision();
-                        
-                        // Remove both bullets
-                        this.bulletPool.release(playerBullets[i]);
-                        playerBullets.splice(i, 1);
-                        this.bulletPool.release(enemyBullet);
-                        enemy.bullets.splice(j, 1);
-                        
-                        bulletHit = true;
-                        break enemyLoop;
-                    }
-                }
-            }
-            
-            if (bulletHit) continue;
-        }
-        
-        // Enemy bullets hitting player - only if player is not invulnerable or shield active
-        if (!this.playerInvulnerable && 
-            !(this.player.hasBonus && this.player.bonusType === BonusType.BULLET_SHIELD)) {
-            for (const enemy of enemies) {
-                for (let i = enemy.bullets.length - 1; i >= 0; i--) {
-                    const bullet = enemy.bullets[i];
-                    
-                    if (this.checkCollision(bullet, this.player)) {
-                        // Return bullet to pool
-                        this.bulletPool.release(bullet);
-                        enemy.bullets.splice(i, 1);
-                        
-                        this.handleGameEvent('playerHit', {
-                            x: bullet.x, 
-                            y: bullet.y
-                        });
-                        break;
-                    }
-                }
-            }
         }
     }
 
@@ -1076,6 +1174,13 @@ class Game {
         document.getElementById('start-button').classList.add('hidden');
         document.getElementById('restart-button').classList.remove('hidden');
         
+        // Reset game statistics
+        GameStats.reset();
+        this.lastTimeUpdate = Date.now();
+        
+        // Clear particles
+        this.particleSystem.clear();
+        
         this.start();
     }
     
@@ -1125,12 +1230,15 @@ class Game {
     victory() {
         // Cancel any pending level transition and stop the game first
         this.isTransitioningLevel = false;
-        this.state.isRunning = false;
+        this.stop();
         this.state.gameState = GameState.GAME_OVER;
         
         // Clean up any remaining entities and effects
         this.cleanupEntities();
         this.bonusShip = null;
+        
+        // Save high score and check ranking
+        const scoreRank = this.saveHighScore(this.state.score);
         
         // Clear any existing messages
         const existingMessages = document.querySelectorAll('.level-message, .bonus-message');
@@ -1140,23 +1248,34 @@ class Game {
         this.ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
         this.ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
         
-        // Draw congratulations text
+        // Draw congratulations text with glow effect
+        this.ctx.shadowColor = '#0f0';
+        this.ctx.shadowBlur = 15;
         this.ctx.fillStyle = '#0f0';
-        this.ctx.font = '60px Arial';
+        this.ctx.font = 'bold 60px Arial';
         this.ctx.textAlign = 'center';
         this.ctx.fillText('VICTORY!', GAME_CONFIG.width/2, GAME_CONFIG.height/3 - 40);
         
-        // Draw completion message
-        this.ctx.font = '30px Arial';
-        this.ctx.fillText('Congratulations!', GAME_CONFIG.width/2, GAME_CONFIG.height/3 + 20);
-        this.ctx.fillText('You saved Earth from the aliens!', GAME_CONFIG.width/2, GAME_CONFIG.height/3 + 60);
+        // Reset shadow for other text
+        this.ctx.shadowBlur = 0;
         
-        // Draw stats
+        this.ctx.font = '30px Arial';
+        this.ctx.fillText('Earth is saved from the aliens!', GAME_CONFIG.width/2, GAME_CONFIG.height/3 + 20);
+        
+        // Show high score achievement
+        if (scoreRank <= 5) {
+            this.ctx.fillStyle = '#ff0';
+            this.ctx.fillText(`NEW HIGH SCORE: RANK #${scoreRank}!`, GAME_CONFIG.width/2, GAME_CONFIG.height/3 + 60);
+        }
+        
+        // Show enhanced game statistics
         this.ctx.fillStyle = '#fff';
         this.ctx.font = '24px Arial';
         this.ctx.fillText(`Levels Completed: ${this.state.maxLevel}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2);
         this.ctx.fillText(`Final Score: ${this.state.score}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2 + 40);
-        this.ctx.fillText(`Lives Remaining: ${this.state.lives}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2 + 80);
+        this.ctx.fillText(`Enemies Destroyed: ${GameStats.enemiesDestroyed}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2 + 80);
+        this.ctx.fillText(`Accuracy: ${GameStats.getAccuracy()}%`, GAME_CONFIG.width/2, GAME_CONFIG.height/2 + 120);
+        this.ctx.fillText(`Time Played: ${this.formatTime(GameStats.timePlayed)}`, GAME_CONFIG.width/2, GAME_CONFIG.height/2 + 160);
         
         // Show device-appropriate restart instructions
         if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
@@ -1214,6 +1333,9 @@ class Game {
     handleGameEvent(eventType, data = {}) {
         switch(eventType) {
             case 'playerHit':
+                // Add screen shake effect
+                this.particleSystem.addScreenShake(10, 0.3);
+                
                 this.explosions.push(
                     this.explosionPool.get({
                         x: data.x,
@@ -1236,6 +1358,9 @@ class Game {
                 break;
                 
             case 'enemyDestroyed':
+                // Add particle effects for enemy explosions
+                this.particleSystem.addExplosion(data.x, data.y, data.enemy.type);
+                
                 this.explosions.push(
                     this.explosionPool.get({
                         x: data.x, 
@@ -1320,95 +1445,66 @@ class Game {
         document.getElementById('score').textContent = `Score: ${this.state.score}`;
     }
 
-    render() {
-        // Clear the canvas
-        this.ctx.fillStyle = '#000';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        
-        // Draw background
-        this.drawBackground();
-        
-        if (this.state.gameState === GameState.MENU) {
-            this.renderMenu();
-            return;
-        }
-        
-        if (this.state.gameState === GameState.PAUSED) {
-            this.renderPauseScreen();
-            return;
-        }
-        
-        // Draw player with blinking effect when invulnerable
-        if (!this.playerInvulnerable || Math.floor(Date.now() / 100) % 2) {
-            this.player.draw(this.ctx);
-        }
-        
-        // Draw entities (enemies and their bullets)
-        this.entities.forEach(entity => {
-            if (entity instanceof Enemy) {
-                entity.draw(this.ctx);
-                // Draw enemy bullets
-                entity.bullets.forEach(bullet => bullet.draw(this.ctx));
-            }
-        });
-        
-        // Draw bonus ship if active
-        if (this.bonusShip) {
-            this.bonusShip.draw(this.ctx);
-        }
-
-        // Draw explosions over everything else
-        this.explosions.forEach(explosion => explosion.draw(this.ctx));
-    }
-
-    gameLoop(timestamp) {
-        if (!this.state.isRunning) return;
-
-        const deltaTime = Math.min(timestamp - this.lastTime, 100); // Cap at 100ms to prevent large jumps
-        this.lastTime = timestamp;
-
-        this.accumulator += deltaTime;
-        
-        // Use a fixed number of updates to prevent spiral of death
-        let updateCount = 0;
-        const MAX_UPDATES = 5;
-        
-        while (this.accumulator >= this.timeStep && updateCount < MAX_UPDATES) {
-            this.update(this.timeStep);
-            this.accumulator -= this.timeStep;
-            updateCount++;
-        }
-        
-        // If we hit the update cap, just discard remaining time
-        if (updateCount >= MAX_UPDATES) {
-            this.accumulator = 0;
-        }
-
-        this.render();
-        this.framesThisSecond++;
-        requestAnimationFrame(this.gameLoop.bind(this));
-    }
-
     renderMenu() {
-        this.ctx.fillStyle = '#fff';
-        this.ctx.font = '40px Arial';
+        // Draw animated stars instead of static background
+        this.particleSystem.drawStarfield(this.ctx);
+        
+        // Add animated title with pulsing effect
+        const pulseAmount = Math.sin(Date.now() / 500) * 0.1 + 1;
+        
+        this.ctx.shadowColor = '#0f0';
+        this.ctx.shadowBlur = 15;
+        this.ctx.fillStyle = '#0f0';
+        this.ctx.font = 'bold 60px Arial';
         this.ctx.textAlign = 'center';
-        this.ctx.fillText('SPACE INVADERS', GAME_CONFIG.width/2, GAME_CONFIG.height/3);
+        this.ctx.save();
+        this.ctx.translate(GAME_CONFIG.width/2, GAME_CONFIG.height/4);
+        this.ctx.scale(pulseAmount, pulseAmount);
+        this.ctx.fillText('SPACE INVADERS', 0, 0);
+        this.ctx.restore();
         
-        this.ctx.font = '20px Arial';
+        // Draw high scores
+        this.ctx.shadowBlur = 0;
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '24px Arial';
+        this.ctx.fillText('HIGH SCORES', GAME_CONFIG.width/2, GAME_CONFIG.height/3 + 20);
         
-        if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
-            this.ctx.fillText('Slide to move, tap to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height/2);
+        let yPos = GAME_CONFIG.height/3 + 60;
+        if (GAME_CONFIG.highScores.length === 0) {
+            this.ctx.fillText('No scores yet!', GAME_CONFIG.width/2, yPos);
         } else {
-            this.ctx.fillText('Press ENTER to start', GAME_CONFIG.width/2, GAME_CONFIG.height/2);
-            this.ctx.font = '16px Arial';
-            this.ctx.fillText('Controls: Arrows to move, Space to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.6);
-            this.ctx.fillText('P to pause, M to mute', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.65);
+            GAME_CONFIG.highScores.slice(0, 5).forEach((score, index) => {
+                this.ctx.fillText(`${index + 1}. ${score.score} pts - ${score.date}`, GAME_CONFIG.width/2, yPos);
+                yPos += 30;
+            });
         }
         
-        // Fix player ship drawing
+        // Draw device-specific instructions
+        this.ctx.font = '20px Arial';
+        if (window.innerWidth <= 768 || !window.matchMedia('(hover: hover)').matches) {
+            this.ctx.fillText('Slide to move, tap to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.7);
+        } else {
+            this.ctx.fillText('Press ENTER to start', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.7);
+            this.ctx.font = '16px Arial';
+            this.ctx.fillText('Controls: Arrows to move, Space to shoot', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.75);
+            this.ctx.fillText('P to pause, M to mute', GAME_CONFIG.width/2, GAME_CONFIG.height * 0.8);
+        }
+        
+        // Draw animated player ship
+        const thrustSize = Math.sin(Date.now() / 100) * 5 + 10;
         this.ctx.save();
-        this.ctx.translate(GAME_CONFIG.width/2, GAME_CONFIG.height * 0.75);
+        this.ctx.translate(GAME_CONFIG.width/2, GAME_CONFIG.height * 0.85);
+        
+        // Draw thrust flame
+        this.ctx.fillStyle = '#f80';
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, 10);
+        this.ctx.lineTo(-8, 10 + thrustSize);
+        this.ctx.lineTo(8, 10 + thrustSize);
+        this.ctx.closePath();
+        this.ctx.fill();
+        
+        // Draw ship
         this.ctx.fillStyle = '#0f0';
         this.ctx.beginPath();
         this.ctx.moveTo(0, -15);
@@ -1416,6 +1512,13 @@ class Game {
         this.ctx.lineTo(-25, 15);
         this.ctx.closePath();
         this.ctx.fill();
+        
+        // Draw cockpit
+        this.ctx.fillStyle = '#00f';
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        this.ctx.fill();
+        
         this.ctx.restore();
         
         // Update menu button visibility
@@ -1621,6 +1724,58 @@ class Game {
         this.canvas.addEventListener('touchmove', touchMove, { passive: false });
         this.canvas.addEventListener('touchend', touchEnd, { passive: false });
     }
+
+    // High score management
+    loadHighScores() {
+        const savedScores = localStorage.getItem('spaceInvadersHighScores');
+        if (savedScores) {
+            GAME_CONFIG.highScores = JSON.parse(savedScores);
+        }
+    }
+    
+    saveHighScore(score) {
+        // Check if score qualifies for high scores
+        const lowestScore = GAME_CONFIG.highScores.length >= 5 ? 
+            GAME_CONFIG.highScores[GAME_CONFIG.highScores.length - 1].score : 0;
+            
+        const isHighScore = GAME_CONFIG.highScores.length < 5 || score > lowestScore;
+            
+        if (!isHighScore && GAME_CONFIG.highScores.length >= 5) {
+            // Not a high score and we already have 5 scores
+            return false;
+        }
+        
+        GAME_CONFIG.highScores.push({
+            score,
+            date: new Date().toLocaleDateString(),
+            level: this.state.level,
+            accuracy: GameStats.getAccuracy()
+        });
+        
+        // Sort and keep only top 5
+        GAME_CONFIG.highScores.sort((a, b) => b.score - a.score);
+        if (GAME_CONFIG.highScores.length > 5) {
+            GAME_CONFIG.highScores = GAME_CONFIG.highScores.slice(0, 5);
+        }
+        
+        // Save to localStorage
+        localStorage.setItem('spaceInvadersHighScores', JSON.stringify(GAME_CONFIG.highScores));
+        
+        // Return rank (position in high scores)
+        return GAME_CONFIG.highScores.findIndex(s => s.score === score) + 1;
+    }
+
+    formatTime(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${minutes}m ${secs}s`;
+    }
+
+    // Spawn power-up drops from destroyed enemies
+    spawnPowerUpDrop(x, y) {
+        const powerUp = new PowerUpDrop(x, y);
+        this.entities.add(powerUp);
+    }
 }
 
 // Add the BonusShip class
@@ -1752,6 +1907,10 @@ class Player {
         this.hasBonus = false;
         this.bonusType = null;
         this.bonusEndTime = 0;
+
+        // Add support for speed boost powerup
+        this.speedBoost = false;
+        this.speedBoostEndTime = 0;
     }
     
     draw(ctx) {
@@ -1814,9 +1973,14 @@ class Player {
                            this.shootDelay / 3 : this.shootDelay;
         
         if (now - this.lastShot >= currentDelay) {
+            // Track shots fired when shooting, not when checking collisions
+            GameStats.shotsFired++;
+            
             // Normal shot or multi-shot based on bonus
             if (this.hasBonus && this.bonusType === BonusType.MULTI_SHOT) {
-                // Create 3 bullets for multi-shot
+                // Create 3 bullets for multi-shot - each counts as one shot
+                GameStats.shotsFired += 2; // 2 additional shots
+                
                 this.bullets.push(window.gameInstance.bulletPool.get({
                     x: this.x + this.width / 2, 
                     y: this.y
@@ -1878,6 +2042,7 @@ class Player {
     
     update(deltaTime) {
         // Check if bonus has expired
+        const now = Date.now();
         if (this.hasBonus && Date.now() > this.bonusEndTime) {
             this.hasBonus = false;
             this.bonusType = null;
@@ -1893,6 +2058,21 @@ class Player {
             }
             return true;
         });
+
+        // Check for bonus expiration
+        if ((this.hasBonus && now > this.bonusEndTime) ||
+            (this.speedBoost && now > this.speedBoostEndTime)) {
+            
+            if (this.hasBonus && now > this.bonusEndTime) {
+                this.hasBonus = false;
+                this.bonusType = null;
+            }
+            
+            if (this.speedBoost && now > this.speedBoostEndTime) {
+                this.speedBoost = false;
+                this.speed = 5; // Reset to default speed
+            }
+        }
     }
 }
 
@@ -2079,6 +2259,183 @@ class Bullet {
         // Frame rate independent movement
         const speedMultiplier = window.gameInstance.deltaMultiplier;
         this.y -= this.speed * speedMultiplier;
+    }
+}
+
+// Add PowerUpDrop class for enemy drops
+class PowerUpDrop {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 20;
+        this.height = 20;
+        this.speed = 2;
+        this.type = this._getRandomType();
+        this.active = true;
+        this.pulseAmount = 0;
+    }
+    
+    _getRandomType() {
+        const types = Object.values(BonusType);
+        return types[Math.floor(Math.random() * types.length)];
+    }
+    
+    _getTypeColor() {
+        switch (this.type) {
+            case BonusType.RAPID_FIRE: return '#ff0';    // Yellow
+            case BonusType.MULTI_SHOT: return '#f0f';    // Purple
+            case BonusType.BULLET_SHIELD: return '#0ff'; // Cyan
+            case BonusType.EXTRA_LIFE: return '#f00';    // Red
+            case BonusType.SPEED_BOOST: return '#0f0';   // Green
+            default: return '#fff';
+        }
+    }
+    
+    draw(ctx) {
+        const color = this._getTypeColor();
+        this.pulseAmount = (this.pulseAmount + 0.1) % (Math.PI * 2);
+        const scale = 0.8 + Math.sin(this.pulseAmount) * 0.2;
+        
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.scale(scale, scale);
+        
+        // Add glow effect
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 10;
+        
+        // Draw power-up icon based on type
+        ctx.fillStyle = color;
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        
+        switch (this.type) {
+            case BonusType.RAPID_FIRE:
+                // Draw lightning bolt
+                ctx.beginPath();
+                ctx.moveTo(-5, -10);
+                ctx.lineTo(5, -2);
+                ctx.lineTo(0, 2);
+                ctx.lineTo(8, 10);
+                ctx.lineTo(-2, 0);
+                ctx.lineTo(3, -5);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                break;
+                
+            case BonusType.MULTI_SHOT:
+                // Draw triple bullet
+                ctx.beginPath();
+                for (let i = -1; i <= 1; i++) {
+                    ctx.rect(i * 6, -10, 2, 20);
+                }
+                ctx.fill();
+                ctx.stroke();
+                break;
+                
+            case BonusType.BULLET_SHIELD:
+                // Draw shield
+                ctx.beginPath();
+                ctx.arc(0, 0, 10, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(0, 0, 5, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+                
+            case BonusType.EXTRA_LIFE:
+                // Draw heart
+                ctx.beginPath();
+                ctx.moveTo(0, 5);
+                ctx.bezierCurveTo(-10, -10, -10, -10, 0, -5);
+                ctx.bezierCurveTo(10, -10, 10, -10, 0, 5);
+                ctx.fill();
+                ctx.stroke();
+                break;
+                
+            case BonusType.SPEED_BOOST:
+                // Draw speed lines
+                for (let i = -8; i <= 8; i += 4) {
+                    ctx.beginPath();
+                    ctx.moveTo(i, -8);
+                    ctx.lineTo(i + 3, 8);
+                    ctx.stroke();
+                }
+                ctx.beginPath();
+                ctx.moveTo(-5, 0);
+                ctx.lineTo(5, 0);
+                ctx.lineTo(0, 8);
+                ctx.closePath();
+                ctx.fill();
+                break;
+        }
+        
+        ctx.restore();
+    }
+    
+    update(deltaTime) {
+        // Move downward
+        this.y += this.speed * window.gameInstance.deltaMultiplier;
+        
+        // Check if off screen
+        if (this.y > GAME_CONFIG.height) {
+            this.active = false;
+        }
+        
+        return this.active;
+    }
+    
+    collect() {
+        const player = window.gameInstance.player;
+        
+        // Apply effects based on type
+        switch(this.type) {
+            case BonusType.EXTRA_LIFE:
+                window.gameInstance.state.lives++;
+                window.gameInstance.updateLives();
+                window.gameInstance.soundManager.playPowerupCollect();
+                
+                // Show message
+                this._showCollectMessage("EXTRA LIFE!");
+                break;
+                
+            case BonusType.SPEED_BOOST:
+                player.speedBoost = true;
+                player.speed = 8; // Increase speed
+                player.speedBoostEndTime = Date.now() + GAME_CONFIG.bonusDuration;
+                window.gameInstance.soundManager.playPowerupCollect();
+                
+                // Show message
+                this._showCollectMessage("SPEED BOOST!");
+                break;
+                
+            default:
+                // Apply standard bonus
+                player.applyBonus(this.type);
+                break;
+        }
+        
+        // Update stats
+        GameStats.powerupsCollected++;
+        
+        // Create particles
+        window.gameInstance.particleSystem.addPowerupCollect(this.x, this.y, this._getTypeColor());
+        
+        // Remove this power-up
+        this.active = false;
+    }
+    
+    _showCollectMessage(message) {
+        const messageEl = document.createElement('div');
+        messageEl.className = 'bonus-message';
+        messageEl.textContent = message;
+        document.getElementById('game-container').appendChild(messageEl);
+        
+        setTimeout(() => {
+            messageEl.classList.add('fade-out');
+            setTimeout(() => messageEl.remove(), 1000);
+        }, 2000);
     }
 }
 

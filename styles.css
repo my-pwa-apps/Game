@@ -78,7 +78,7 @@ button {
     font-family: 'Courier New', monospace;
     font-size: 36px;
     color: #fff;
-    text-shadow: 0 0 10px #0ff, 0 0 20px #00f;
+    text-shadow: 0 0 15px #0ff, 0 0 30px #00f;
     animation: pulse 0.5s infinite alternate;
     z-index: 10;
     pointer-events: none;
@@ -277,4 +277,55 @@ button {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
+}
+
+/* Add high score table styling */
+.high-score-entry {
+    color: #fff;
+    font-size: 18px;
+    text-align: center;
+    margin: 5px 0;
+    text-shadow: 0 0 5px #0f0;
+}
+
+.high-score-header {
+    color: #0f0;
+    font-size: 24px;
+    text-align: center;
+    margin-bottom: 15px;
+    text-shadow: 0 0 10px #0f0;
+}
+
+/* Add animation for powerup collection */
+@keyframes powerupCollect {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(2); opacity: 0; }
+}
+
+.powerup-collect {
+    position: absolute;
+    pointer-events: none;
+    animation: powerupCollect 0.5s forwards;
+}
+
+/* Add screen flash animation */
+@keyframes screenFlash {
+    0% { opacity: 0.7; }
+    100% { opacity: 0; }
+}
+
+.screen-flash {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #fff;
+    pointer-events: none;
+    opacity: 0;
+    z-index: 100;
+}
+
+.screen-flash.active {
+    animation: screenFlash 0.2s forwards;
 }
