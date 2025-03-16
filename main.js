@@ -1,5 +1,3 @@
-// Optimize rendering performance and memory usage
-
 // Constants - grouped at top for better minification
 const PLAYER_WIDTH = 50;
 const PLAYER_HEIGHT = 30;
@@ -9,6 +7,82 @@ const BULLET_WIDTH = 3;
 const BULLET_HEIGHT = 15;
 const BONUS_SHIP_WIDTH = 60;
 const BONUS_SHIP_HEIGHT = 20;
+
+// Define game state constants for better state management
+const GameState = {
+    MENU: 'menu',
+    PLAYING: 'playing',
+    PAUSED: 'paused',
+    GAME_OVER: 'gameOver',
+    LEVEL_COMPLETE: 'levelComplete'
+};
+
+// Add new bonus types enum to existing code
+const BonusType = {
+    RAPID_FIRE: 'rapidFire',
+    MULTI_SHOT: 'multiShot',
+    BULLET_SHIELD: 'bulletShield',
+    EXTRA_LIFE: 'extraLife',      // New power-up
+    SPEED_BOOST: 'speedBoost'     // New power-up
+};
+
+// Add game statistics tracking
+const GameStats = {
+    shotsFired: 0,
+    shotsHit: 0,
+    enemiesDestroyed: 0,
+    powerupsCollected: 0,
+    timePlayed: 0,
+    
+    reset() {
+        this.shotsFired = 0;
+        this.shotsHit = 0;
+        this.enemiesDestroyed = 0;
+        this.powerupsCollected = 0;
+        this.timePlayed = 0;
+    },
+    
+    getAccuracy() {
+        return this.shotsFired > 0 ? Math.floor((this.shotsHit / this.shotsFired) * 100) : 0;
+    }
+};
+
+// Define GAME_CONFIG first to avoid reference errors
+const GAME_CONFIG = {
+    width: 800,
+    height: 600,
+    fps: 60,
+    scale: window.devicePixelRatio || 1,
+    levels: [
+        {
+            enemyRows: 3,
+            enemySpeed: 1,
+            enemyType: 'basic',
+            enemyPoints: 10,
+            enemyShootFrequency: 0.0002
+        },
+        {
+            enemyRows: 4,
+            enemySpeed: 1.2,
+            enemyType: 'advanced',
+            enemyPoints: 20,
+            enemyShootFrequency: 0.0004
+        },
+        {
+            enemyRows: 5,
+            enemySpeed: 1.5,
+            enemyType: 'boss',
+            enemyPoints: 30,
+            enemyShootFrequency: 0.0006
+        }
+    ],
+    bonusShipChance: 0.001,  // Chance per frame of bonus ship appearing
+    bonusDuration: 10000,     // Duration of bonus effect in ms
+    highScores: [] // Will store high scores
+};
+
+// Fix circular reference by using a global audio context
+const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
 // Use requestIdleCallback for non-critical operations
 const scheduleIdleTask = window.requestIdleCallback || 
@@ -52,7 +126,7 @@ class SpatialGrid {
         const result = [];
         
         for (let r = Math.max(0, row - 1); r <= Math.min(this.rows - 1, row + 1); r++) {
-            for (let c = Math.max(0, col - 1); c <= Math.min(this.cols - 1, col + 1); c++) {
+            for (let c = Math.max(0, col - 1); c <= Math.min(this.cols - 1, c + 1); c++) {
                 const index = r * this.cols + c;
                 result.push(...this.grid[index]);
             }
