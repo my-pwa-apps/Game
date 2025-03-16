@@ -27,6 +27,9 @@ body {
     left: 50%;
     transform: translate(-50%, -50%);
     image-rendering: pixelated;
+    display: block;
+    margin: 0 auto;
+    background: #000;
 }
 
 #mobile-controls {
