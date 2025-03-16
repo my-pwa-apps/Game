@@ -1849,6 +1849,7 @@ class Game {
     
     // Add a celebratory effect for victory
     createVictoryExplosions() {
+        console.log("Creating victory explosions"); // Debug log
         // Create multiple colorful explosions at random positions
         const colors = ['#0f0', '#00f', '#f0f', '#ff0', '#0ff'];
         
@@ -1864,6 +1865,7 @@ class Game {
                         size: 20 + Math.random() * 40
                     })
                 );
+                console.log(`Explosion ${index} created at (${x}, ${y}) with color ${color}`); // Debug log
                 
                 if (index < 20) { // Create 20 explosions
                     createRandomExplosion(index + 1);
