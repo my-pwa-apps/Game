@@ -2510,9 +2510,12 @@ class Player {
         // Change ship color based on active bonus
         ctx.fillStyle = this.hasBonus ? this._getBonusColor() : '#0f0';
         
-        // ...existing drawing code...
+        // Draw spaceship body with gradient
+        const gradient = ctx.createLinearGradient(this.x, this.y, this.x, this.y + this.height);
+        gradient.addColorStop(0, '#0f0');
+        gradient.addColorStop(1, '#080');
+        ctx.fillStyle = gradient;
         ctx.beginPath();
-        // Draw spaceship body
         ctx.moveTo(this.x + this.width / 2, this.y);
         ctx.lineTo(this.x + this.width, this.y + this.height);
         ctx.lineTo(this.x + this.width * 0.8, this.y + this.height * 0.8);
@@ -2523,8 +2526,11 @@ class Player {
         ctx.closePath();
         ctx.fill();
 
-        // Draw cockpit
-        ctx.fillStyle = '#00f';
+        // Draw cockpit with gradient
+        const cockpitGradient = ctx.createRadialGradient(this.x + this.width / 2, this.y + this.height * 0.4, 0, this.x + this.width / 2, this.y + this.height * 0.4, this.width * 0.15);
+        cockpitGradient.addColorStop(0, '#00f');
+        cockpitGradient.addColorStop(1, '#004');
+        ctx.fillStyle = cockpitGradient;
         ctx.beginPath();
         ctx.arc(this.x + this.width / 2, this.y + this.height * 0.4, this.width * 0.15, 0, Math.PI * 2);
         ctx.fill();
