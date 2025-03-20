@@ -573,6 +573,136 @@ class Bullet {
     }
 }
 
+// Add PowerUpDrop class
+class PowerUpDrop {
+    constructor(x, y) {
+        this.width = PLAYER_WIDTH / 2;
+        this.height = PLAYER_HEIGHT / 2;
+        this.x = x - this.width / 2;
+        this.y = y - this.height / 2;
+        this.speed = 2;
+        this.powerUpType = this._getRandomPowerUpType();
+        this.active = true;
+        this.color = this._getColorForType();
+    }
+    
+    _getRandomPowerUpType() {
+        const types = Object.values(BonusType);
+        return types[Math.floor(Math.random() * types.length)];
+    }
+    
+    _getColorForType() {
+        switch(this.powerUpType) {
+            case BonusType.RAPID_FIRE: return '#ff0';
+            case BonusType.MULTI_SHOT: return '#f0f';
+            case BonusType.BULLET_SHIELD: return '#0ff';
+            case BonusType.EXTRA_LIFE: return '#0f0';
+            case BonusType.SPEED_BOOST: return '#f00';
+            default: return '#fff';
+        }
+    }
+    
+    update(deltaTime) {
+        this.y += this.speed * window.gameInstance.deltaMultiplier;
+        
+        // Check if it's gone off screen
+        if (this.y > GAME_CONFIG.height) {
+            this.active = false;
+        }
+        
+        return this.active;
+    }
+    
+    draw(ctx) {
+        ctx.fillStyle = this.color;
+        
+        // Draw pulsing power-up
+        const pulseAmount = Math.sin(Date.now() / 200) * 0.2 + 1;
+        const centerX = this.x + this.width / 2;
+        const centerY = this.y + this.height / 2;
+        
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.scale(pulseAmount, pulseAmount);
+        
+        // Draw power-up capsule
+        ctx.beginPath();
+        ctx.arc(-this.width/4, 0, this.height/2, Math.PI/2, -Math.PI/2);
+        ctx.arc(this.width/4, 0, this.height/2, -Math.PI/2, Math.PI/2);
+        ctx.fill();
+        
+        // Draw power-up type indicator
+        ctx.fillStyle = '#fff';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        let letter;
+        switch(this.powerUpType) {
+            case BonusType.RAPID_FIRE: letter = 'R'; break;
+            case BonusType.MULTI_SHOT: letter = 'M'; break;
+            case BonusType.BULLET_SHIELD: letter = 'S'; break;
+            case BonusType.EXTRA_LIFE: letter = 'L'; break;
+            case BonusType.SPEED_BOOST: letter = 'B'; break;
+        }
+        
+        ctx.fillText(letter, 0, 0);
+        ctx.restore();
+    }
+    
+    collect() {
+        // Apply effect to player
+        const player = window.gameInstance.player;
+        
+        if (this.powerUpType === BonusType.EXTRA_LIFE) {
+            // Immediately add an extra life
+            window.gameInstance.state.lives++;
+            window.gameInstance.updateLives();
+            
+            // Show message
+            const messageEl = document.createElement('div');
+            messageEl.className = 'bonus-message';
+            messageEl.textContent = '+1 LIFE!';
+            document.getElementById('game-container').appendChild(messageEl);
+            
+            setTimeout(() => {
+                messageEl.classList.add('fade-out');
+                setTimeout(() => messageEl.remove(), 1000);
+            }, 2000);
+        } else if (this.powerUpType === BonusType.SPEED_BOOST) {
+            // Apply speed boost
+            player.speed = 8; // 60% speed boost
+            player.speedBoost = true;
+            player.speedBoostEndTime = Date.now() + GAME_CONFIG.bonusDuration;
+            
+            // Show message
+            const messageEl = document.createElement('div');
+            messageEl.className = 'bonus-message';
+            messageEl.textContent = 'SPEED BOOST!';
+            document.getElementById('game-container').appendChild(messageEl);
+            
+            setTimeout(() => {
+                messageEl.classList.add('fade-out');
+                setTimeout(() => messageEl.remove(), 1000);
+            }, 2000);
+        } else {
+            // Apply other bonuses
+            player.applyBonus(this.powerUpType);
+        }
+        
+        // Add particle effect 
+        window.gameInstance.particleSystem.addPowerupCollect(
+            this.x + this.width/2, this.y + this.height/2, this.color
+        );
+        
+        // Play sound
+        window.gameInstance.soundManager.playPowerupCollect();
+        
+        // Update stats
+        GameStats.powerupsCollected++;
+    }
+}
+
 class Game {
     constructor() {
         this.domCache = {
