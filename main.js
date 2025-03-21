@@ -1,4 +1,4 @@
-// Constants - grouped at top for better minification
+// Constants and configuration
 const PLAYER_WIDTH = 50;
 const PLAYER_HEIGHT = 30;
 const ENEMY_WIDTH = 40;
@@ -8,7 +8,7 @@ const BULLET_HEIGHT = 15;
 const BONUS_SHIP_WIDTH = 60;
 const BONUS_SHIP_HEIGHT = 20;
 
-// Define game state constants for better state management
+// Game state and bonus type enums
 const GameState = {
     MENU: 'menu',
     PLAYING: 'playing',
@@ -17,68 +17,22 @@ const GameState = {
     LEVEL_COMPLETE: 'levelComplete'
 };
 
-// Add new bonus types enum to existing code
 const BonusType = {
     RAPID_FIRE: 'rapidFire',
     MULTI_SHOT: 'multiShot',
     BULLET_SHIELD: 'bulletShield',
-    EXTRA_LIFE: 'extraLife',      // New power-up
-    SPEED_BOOST: 'speedBoost'     // New power-up
+    EXTRA_LIFE: 'extraLife',
+    SPEED_BOOST: 'speedBoost'
 };
 
-// Add game statistics tracking
+// Game statistics tracking
 const GameStats = {
-    shotsFired: 0,
-    shotsHit: 0,
-    enemiesDestroyed: 0,
-    powerupsCollected: 0,
-    timePlayed: 0,
-    
-    reset() {
-        this.shotsFired = 0;
-        this.shotsHit = 0;
-        this.enemiesDestroyed = 0;
-        this.powerupsCollected = 0;
-        this.timePlayed = 0;
-    },
-    
-    getAccuracy() {
-        return this.shotsFired > 0 ? Math.floor((this.shotsHit / this.shotsFired) * 100) : 0;
-    }
+    // ...existing GameStats code...
 };
 
-// Define GAME_CONFIG first to avoid reference errors
+// Game configuration
 const GAME_CONFIG = {
-    width: 800,
-    height: 600,
-    fps: 60,
-    scale: window.devicePixelRatio || 1,
-    levels: [
-        {
-            enemyRows: 3,
-            enemySpeed: 1,
-            enemyType: 'basic',
-            enemyPoints: 10,
-            enemyShootFrequency: 0.0002
-        },
-        {
-            enemyRows: 4,
-            enemySpeed: 1.2,
-            enemyType: 'advanced',
-            enemyPoints: 20,
-            enemyShootFrequency: 0.0004
-        },
-        {
-            enemyRows: 5,
-            enemySpeed: 1.5,
-            enemyType: 'boss',
-            enemyPoints: 30,
-            enemyShootFrequency: 0.0006
-        }
-    ],
-    bonusShipChance: 0.001,  // Chance per frame of bonus ship appearing
-    bonusDuration: 10000,     // Duration of bonus effect in ms
-    highScores: [] // Will store high scores
+    // ...existing GAME_CONFIG code...
 };
 
 // Fix circular reference by using a global audio context
@@ -2337,9 +2291,34 @@ class Game {
         this.ctx.fillStyle = bossGradient;
         this.ctx.beginPath();
         this.ctx.moveTo(x3 + tempEnemyWidth * 0.5, y3 + tempEnemyHeight * 0.15);
-        this.ctx.lineTo(x3 + tempEnemyWidth * 0.8, y3 + tempEnemyHeight * 0.3);
-        this.ctx.lineTo(x3 + tempEnemyWidth * 0.9, y3 + tempEnemyHeight * 0.7);
-        this.ctx.lineTo(x3 + tempEnemyWidth * 0.5, y3 + tempEnemyHeight * 0.9);
+                this.ctx.lineTo(x3 + tempEnemyWidth * 0.8, y3 + tempEnemyHeight * 0.3);
+                this.ctx.lineTo(x3 + tempEnemyWidth * 0.9, y3 + tempEnemyHeight * 0.7);
+                this.ctx.lineTo(x3 + tempEnemyWidth * 0.5, y3 + tempEnemyHeight * 0.9);
+            }
+        }
+        
+        // ...existing code...
+        
+        // Constants and initial setup
+        // ...existing code...
+        
+        // Base game classes - single declarations
+        class Game {
+            // ...existing Game implementation...
+        }
+        
+        // Initialize the game
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                const game = new Game();
+                game.init();
+                game.prepareBackgroundStars();
+                game.state.gameState = GameState.MENU;
+                game.start();
+            } catch (error) {
+                console.error('Failed to initialize game:', error);
+            }
+        });
         this.ctx.lineTo(x3 + tempEnemyWidth * 0.1, y3 + tempEnemyHeight * 0.7);
         this.ctx.lineTo(x3 + tempEnemyWidth * 0.2, y3 + tempEnemyHeight * 0.3);
         this.ctx.closePath();
