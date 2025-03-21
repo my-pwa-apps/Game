@@ -2302,12 +2302,30 @@ class Game {
         // Constants and initial setup
         // ...existing code...
         
-        // Base game classes - single declarations
+        // Keep only ONE declaration of Game class
         class Game {
-            // ...existing Game implementation...
+            constructor() {
+                this.domCache = {
+                    canvas: document.getElementById('gameCanvas'),
+                    score: document.getElementById('score'),
+                    lives: document.getElementById('lives'),
+                    startButton: document.getElementById('start-button'),
+                    muteButton: document.getElementById('mute-button'),
+                    restartButton: document.getElementById('restart-button')
+                };
+        
+                this.canvas = this.domCache.canvas;
+                if (!this.canvas) {
+                    throw new Error('Canvas element with id "gameCanvas" not found! Make sure the page is fully loaded.');
+                }
+                
+                // ...existing code...
+            }
+        
+            // ...existing code...
         }
         
-        // Initialize the game
+        // Initialize the game when the DOM is loaded
         document.addEventListener('DOMContentLoaded', () => {
             try {
                 const game = new Game();
