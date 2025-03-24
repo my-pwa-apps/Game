@@ -668,10 +668,9 @@ class Game {
             restartButton: document.getElementById('restart-button')
         };
     }
-  restartButton: document.getElementById('restart-button')
-        };
+};
 
-        this.canvas = this.domCache.canvas;
+this.canvas = this.ui.canvas;
         if (!this.canvas) {
             throw new Error('Canvas element with id "gameCanvas" not found! Make sure the page is fully loaded.');
         }
