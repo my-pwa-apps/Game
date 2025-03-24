@@ -1,3 +1,44 @@
+// Constants and configuration
+const PLAYER_WIDTH = 50;
+const PLAYER_HEIGHT = 30;
+const ENEMY_WIDTH = 40;
+const ENEMY_HEIGHT = 30;
+const BULLET_WIDTH = 3;
+const BULLET_HEIGHT = 15;
+const BONUS_SHIP_WIDTH = 60;
+const BONUS_SHIP_HEIGHT = 20;
+
+// Game state and bonus type enums
+const GameState = {
+    MENU: 'menu',
+    PLAYING: 'playing',
+    PAUSED: 'paused',
+    GAME_OVER: 'gameOver',
+    LEVEL_COMPLETE: 'levelComplete'
+};
+
+const BonusType = {
+    RAPID_FIRE: 'rapidFire',
+    MULTI_SHOT: 'multiShot',
+    BULLET_SHIELD: 'bulletShield',
+    EXTRA_LIFE: 'extraLife',
+    SPEED_BOOST: 'speedBoost'
+};
+
+// Game statistics tracking
+const GameStats = {
+    // ...existing code...
+};
+
+// Game configuration
+const GAME_CONFIG = {
+    // ...existing code...
+};
+
+// ...existing code...
+
+// Keep only one ParticleSystem class definition (the complete one)
+// The rest of the file remains unchanged
 // Add a ParticleSystem class for enhanced visual effects
 class ParticleSystem {
     constructor() {
