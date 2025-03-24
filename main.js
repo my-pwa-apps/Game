@@ -658,14 +658,17 @@ class PowerUpDrop {
 }
 
 class Game {
-    constructor() {
-        this.domCache = {
+    constructor(ctx) {
+        this.ui = {
             canvas: document.getElementById('gameCanvas'),
             score: document.getElementById('score'),
             lives: document.getElementById('lives'),
             startButton: document.getElementById('start-button'),
             muteButton: document.getElementById('mute-button'),
             restartButton: document.getElementById('restart-button')
+        };
+    }
+  restartButton: document.getElementById('restart-button')
         };
 
         this.canvas = this.domCache.canvas;
@@ -2124,6 +2127,8 @@ class Game {
     }
 
     renderMenu() {
+        // method implementation here
+    }
         // Draw animated stars instead of static background
         this.particleSystem.drawStarfield(this.ctx);
         
