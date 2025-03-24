@@ -1,3 +1,40 @@
+// Add a ParticleSystem class for enhanced visual effects
+class ParticleSystem {
+    constructor() {
+        this.particles = [];
+        this.maxParticles = 500;
+        this.screenShake = {
+            intensity: 0,
+            duration: 0,
+            startTime: 0,
+            active: false
+        };
+        
+        // Add the screenShake methods within the object
+        this.screenShake.start = function(intensity, duration) {
+            this.intensity = intensity;
+            this.duration = duration;
+            this.startTime = Date.now();
+            this.active = true;
+        };
+        
+        this.screenShake.getOffset = function() {
+            if (!this.active) return {x: 0, y: 0};
+            
+            const elapsed = (Date.now() - this.startTime) / 1000;
+            if (elapsed > this.duration) {
+                this.active = false;
+                return {x: 0, y: 0};
+            }
+            
+            const intensity = this.intensity * Math.pow(0.5, elapsed / (this.duration / 5));
+            return {
+                x: (Math.random() * 2 - 1) * intensity,
+                y: (Math.random() * 2 - 1) * intensity
+            };
+        };
+    }
+}
 // Constants and configuration
 const PLAYER_WIDTH = 50;
 const PLAYER_HEIGHT = 30;
