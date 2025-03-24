@@ -667,10 +667,8 @@ class Game {
             muteButton: document.getElementById('mute-button'),
             restartButton: document.getElementById('restart-button')
         };
-    }
-};
 
-this.canvas = this.ui.canvas;
+        this.canvas = this.ui.canvas;
         if (!this.canvas) {
             throw new Error('Canvas element with id "gameCanvas" not found! Make sure the page is fully loaded.');
         }
